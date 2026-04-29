@@ -228,6 +228,10 @@ export function StoryWorkspace() {
 
   const preview = useMemo(() => buildPreview(parsedDraft), [parsedDraft]);
   const dataModeGraph = parsedDraft ? preview : dataGraph;
+  const graphOverview = useMemo(
+    () => buildGraphOverview(dataModeGraph, selectedTranscript, Boolean(parsedDraft)),
+    [dataModeGraph, parsedDraft, selectedTranscript]
+  );
   const constellationGraph = useMemo(
     () => buildConstellationGraph(dataModeGraph, selectedNodeId),
     [dataModeGraph, selectedNodeId]
@@ -393,7 +397,7 @@ export function StoryWorkspace() {
               return current;
             }
 
-            return graph.nodes[0]?.id ?? null;
+            return getFirstVisibleGraphNode(graph)?.id ?? null;
           });
         }
       } catch (caught) {
@@ -490,7 +494,9 @@ export function StoryWorkspace() {
 
       setDraft(payload.draft);
       setDraftText(JSON.stringify(payload.draft, null, 2));
-      setSelectedNodeId(payload.draft.episode.id);
+      setSelectedNodeId(
+        getFirstVisibleGraphNode(buildPreview(payload.draft))?.id ?? payload.draft.episode.id
+      );
       setMessage("Draft graph is ready for review.");
       addActivity(
         "success",
@@ -782,28 +788,42 @@ export function StoryWorkspace() {
         {error ? <p className={styles.error}>{error}</p> : null}
       </section>
 
-      <aside className={styles.reviewPanel} aria-label="Manual graph review">
+      <aside className={styles.reviewPanel} aria-label="Graph details">
         <div className={styles.panelSection}>
           <div className={styles.sectionTitle}>
             <Database size={18} aria-hidden="true" />
-            <h2>Review</h2>
+            <h2>Graph</h2>
           </div>
-          <div className={styles.nodeCard}>
-            <strong>{selectedPreviewNode?.data.label ?? "No graph node selected"}</strong>
-            <span>{selectedPreviewNode?.data.kind ?? "draft"}</span>
-            <p>{selectedPreviewNode?.data.detail ?? "Load a draft and select nodes to inspect them."}</p>
+          <div className={styles.graphOverviewCard}>
+            <strong>{graphOverview.title}</strong>
+            <p>{graphOverview.detail}</p>
+            <dl className={styles.graphStats}>
+              {graphOverview.stats.map((stat) => (
+                <div key={stat.label}>
+                  <dt>{stat.label}</dt>
+                  <dd>{stat.value}</dd>
+                </div>
+              ))}
+            </dl>
+            {graphOverview.kinds.length > 0 ? (
+              <div className={styles.kindList}>
+                {graphOverview.kinds.map((kind) => (
+                  <span key={kind.label}>
+                    {kind.label} <strong>{kind.value}</strong>
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 
         <div className={styles.panelSection}>
-          <h2>Draft JSON</h2>
-          <textarea
-            className={styles.jsonEditor}
-            value={draftText}
-            onChange={(event) => setDraftText(event.target.value)}
-            placeholder="The OpenAI graph draft will appear here for manual review before insertion."
-            spellCheck={false}
-          />
+          <h2>Selected Node</h2>
+          <div className={styles.nodeCard}>
+            <strong>{selectedPreviewNode?.data.label ?? "No graph node selected"}</strong>
+            <span>{selectedPreviewNode?.data.kind ?? "graph"}</span>
+            <p>{selectedPreviewNode?.data.detail ?? "Select a graph node to inspect its details."}</p>
+          </div>
         </div>
       </aside>
 
@@ -1290,6 +1310,55 @@ function buildConstellationGraph(
         },
       })),
   };
+}
+
+function buildGraphOverview(
+  graph: DataGraph,
+  selectedTranscript: TranscriptListItem | null,
+  isDraftGraph: boolean
+) {
+  const episodeNode =
+    graph.nodes.find((node) => node.data.kind.toLowerCase() === "episode") ?? null;
+  const visibleNodes = graph.nodes.filter((node) => node.data.kind.toLowerCase() !== "episode");
+  const kindCounts = new Map<string, number>();
+
+  for (const node of visibleNodes) {
+    const kind = node.data.kind.toLowerCase();
+    kindCounts.set(kind, (kindCounts.get(kind) ?? 0) + 1);
+  }
+
+  const kinds = Array.from(kindCounts.entries())
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 8)
+    .map(([label, value]) => ({ label, value }));
+  const loadedStatus = selectedTranscript?.loadStatus.status.replace("_", " ") ?? "not loaded";
+
+  return {
+    title:
+      episodeNode?.data.label ??
+      selectedTranscript?.title ??
+      (isDraftGraph ? "Draft graph" : "No graph selected"),
+    detail:
+      episodeNode?.data.detail ||
+      (selectedTranscript
+        ? `${selectedTranscript.fileName} is ${loadedStatus}.`
+        : "Select an episode to load graph details."),
+    stats: [
+      { label: "Nodes", value: graph.nodes.length },
+      { label: "Shown", value: visibleNodes.length },
+      { label: "Links", value: graph.edges.length },
+      { label: "Mode", value: isDraftGraph ? "Draft" : "Loaded" },
+    ],
+    kinds,
+  };
+}
+
+function getFirstVisibleGraphNode(graph: DataGraph) {
+  return (
+    graph.nodes.find((node) => node.data.kind.toLowerCase() !== "episode") ??
+    graph.nodes[0] ??
+    null
+  );
 }
 
 function getConnectedComponents(

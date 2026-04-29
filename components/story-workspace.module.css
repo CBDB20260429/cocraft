@@ -366,6 +366,7 @@
 .reviewPanel {
   grid-row: 1;
   border-left: 1px solid var(--border);
+  overflow: auto;
 }
 
 .panelHeader,
@@ -658,6 +659,12 @@
   flex: 1;
 }
 
+.reviewPanel .panelSection:last-child .nodeCard {
+  align-content: start;
+  min-height: 0;
+  overflow: auto;
+}
+
 .panelSection h2 {
   margin: 0;
   font-size: 15px;
@@ -669,6 +676,7 @@
   gap: 9px;
 }
 
+.graphOverviewCard,
 .nodeCard {
   display: grid;
   gap: 6px;
@@ -678,8 +686,69 @@
   background: var(--panel-strong);
 }
 
+.graphOverviewCard strong,
 .nodeCard strong {
   font-size: 15px;
+}
+
+.graphOverviewCard p,
+.nodeCard p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.graphStats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 4px 0 0;
+}
+
+.graphStats div {
+  min-width: 0;
+  border: 1px solid rgba(216, 208, 194, 0.76);
+  border-radius: 8px;
+  padding: 7px;
+  background: rgba(255, 254, 249, 0.62);
+}
+
+.graphStats dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.graphStats dd {
+  margin: 3px 0 0;
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.kindList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.kindList span {
+  border: 1px solid rgba(216, 208, 194, 0.78);
+  border-radius: 999px;
+  padding: 4px 7px;
+  background: rgba(255, 254, 249, 0.62);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.kindList strong {
+  color: var(--foreground);
+  font-size: inherit;
 }
 
 .nodeCard span {
@@ -690,33 +759,6 @@
   color: var(--accent-strong);
   font-size: 12px;
   text-transform: uppercase;
-}
-
-.nodeCard p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.jsonEditor {
-  min-height: 0;
-  flex: 1;
-  width: 100%;
-  resize: vertical;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px;
-  background: #fffef9;
-  color: var(--foreground);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.jsonEditor:focus {
-  border-color: var(--accent);
-  outline: 2px solid rgba(31, 122, 109, 0.18);
 }
 
 .success,
