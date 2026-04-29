@@ -3,21 +3,20 @@
 import {
   Background,
   Controls,
-  MiniMap,
+  MarkerType,
   ReactFlow,
   type Edge,
   type Node,
 } from "@xyflow/react";
 import {
-  AlertTriangle,
-  CheckCircle2,
+  Check,
   Database,
-  FileText,
   Play,
   RefreshCw,
   Upload,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { PlayLayerNode, PlayModeGraph } from "@/lib/play-mode-types";
 import type { TranscriptGraphDraft } from "@/lib/story-graph-types";
 import { Switch } from "@/components/ui/switch";
 import styles from "./story-workspace.module.css";
@@ -51,6 +50,26 @@ type PreviewNodeData = {
   detail: string;
 };
 
+type DataGraph = {
+  nodes: Node<PreviewNodeData>[];
+  edges: Edge[];
+};
+
+type PlayTimelineNode = {
+  id: string;
+  label: string;
+  detail: string;
+  x: number;
+  y: number;
+  kind: string;
+  layers: PlayTimelineLayer[];
+};
+
+type PlayTimelineLayer = PlayLayerNode & {
+  x: number;
+  y: number;
+};
+
 type ActivityLog = {
   id: string;
   level: "info" | "success" | "error";
@@ -61,6 +80,7 @@ type ActivityLog = {
 type DisplayMode = "data" | "play";
 
 type ExtractionResponse = {
+  requestId?: string;
   transcript: {
     id: string;
     fileName: string;
@@ -79,6 +99,13 @@ type ExtractionResponse = {
     responseId: string | null;
     outputChars: number;
   };
+};
+
+type ApiErrorPayload = {
+  error?: string;
+  requestId?: string;
+  durationMs?: number;
+  issues?: unknown;
 };
 
 const previewGroups: Array<{
@@ -101,12 +128,17 @@ export function StoryWorkspace() {
   const [selectedTranscriptId, setSelectedTranscriptId] = useState<string | null>(null);
   const [draft, setDraft] = useState<TranscriptGraphDraft | null>(null);
   const [draftText, setDraftText] = useState("");
+  const [dataGraph, setDataGraph] = useState<DataGraph>({ nodes: [], edges: [] });
+  const [playGraph, setPlayGraph] = useState<PlayModeGraph | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isLoadingList, setIsLoadingList] = useState(true);
+  const [isLoadingDataGraph, setIsLoadingDataGraph] = useState(false);
+  const [isLoadingPlayGraph, setIsLoadingPlayGraph] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isInserting, setIsInserting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [playGraphError, setPlayGraphError] = useState<string | null>(null);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
 
   const addActivity = useCallback((level: ActivityLog["level"], activityMessage: string) => {
@@ -171,9 +203,15 @@ export function StoryWorkspace() {
   }, [draft, draftText]);
 
   const preview = useMemo(() => buildPreview(parsedDraft), [parsedDraft]);
+  const dataModeGraph = parsedDraft ? preview : dataGraph;
+  const playTimeline = useMemo(
+    () => buildPlayTimeline(playGraph, parsedDraft, selectedTranscript),
+    [playGraph, parsedDraft, selectedTranscript]
+  );
+  const playFlow = useMemo(() => buildPlayFlow(playTimeline), [playTimeline]);
   const selectedPreviewNode = useMemo(
-    () => preview.nodes.find((node) => node.id === selectedNodeId) ?? null,
-    [preview.nodes, selectedNodeId]
+    () => dataModeGraph.nodes.find((node) => node.id === selectedNodeId) ?? null,
+    [dataModeGraph.nodes, selectedNodeId]
   );
   const isPlayMode = displayMode === "play";
   const displayModeControl = (
@@ -187,6 +225,103 @@ export function StoryWorkspace() {
       <span className={isPlayMode ? styles.activeModeLabel : ""}>Play</span>
     </label>
   );
+
+  useEffect(() => {
+    if (!isPlayMode || !selectedTranscript) {
+      return;
+    }
+
+    let ignore = false;
+    const transcript = selectedTranscript;
+
+    async function loadPlayGraph() {
+      setIsLoadingPlayGraph(true);
+      setPlayGraphError(null);
+
+      try {
+        const response = await fetch(`/api/graph/play?transcriptId=${transcript.id}`);
+        const payload = (await response.json()) as { graph?: PlayModeGraph; error?: string };
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Could not load play graph.");
+        }
+
+        if (!ignore) {
+          setPlayGraph(payload.graph ?? null);
+        }
+      } catch (caught) {
+        if (!ignore) {
+          setPlayGraph(null);
+          setPlayGraphError(
+            caught instanceof Error ? caught.message : "Could not load play graph."
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setIsLoadingPlayGraph(false);
+        }
+      }
+    }
+
+    void loadPlayGraph();
+
+    return () => {
+      ignore = true;
+    };
+  }, [isPlayMode, selectedTranscript]);
+
+  useEffect(() => {
+    if (isPlayMode || !selectedTranscript || draftText.trim()) {
+      return;
+    }
+
+    let ignore = false;
+    const transcript = selectedTranscript;
+
+    async function loadDataGraph() {
+      setIsLoadingDataGraph(true);
+      setError(null);
+
+      try {
+        const response = await fetch(`/api/graph?transcriptId=${transcript.id}`);
+        const payload = (await response.json()) as DataGraph | ApiErrorPayload;
+
+        if (!response.ok) {
+          throw new Error(
+            "error" in payload && payload.error ? payload.error : "Could not load graph."
+          );
+        }
+
+        if (!ignore) {
+          const graph = payload as DataGraph;
+          setDataGraph(graph);
+          setSelectedNodeId((current) => {
+            if (current && graph.nodes.some((node) => node.id === current)) {
+              return current;
+            }
+
+            return graph.nodes[0]?.id ?? null;
+          });
+        }
+      } catch (caught) {
+        if (!ignore) {
+          setDataGraph({ nodes: [], edges: [] });
+          setSelectedNodeId(null);
+          setError(caught instanceof Error ? caught.message : "Could not load graph.");
+        }
+      } finally {
+        if (!ignore) {
+          setIsLoadingDataGraph(false);
+        }
+      }
+    }
+
+    void loadDataGraph();
+
+    return () => {
+      ignore = true;
+    };
+  }, [draftText, isPlayMode, selectedTranscript]);
 
   async function extractDraft() {
     if (!selectedTranscript || isExtracting) {
@@ -205,18 +340,44 @@ export function StoryWorkspace() {
     );
 
     try {
-      const response = await fetch("/api/transcripts/extract", {
+      const endpoint = "/api/transcripts/extract";
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcriptId: selectedTranscript.id }),
       });
 
-      const payload = await response.json();
+      const responseText = await response.text();
+      const payload = parseJsonResponse(responseText) as ExtractionResponse | ApiErrorPayload | null;
+
       if (!response.ok) {
-        throw new Error(payload.error ?? "Transcript extraction failed.");
+        const apiError = payload as ApiErrorPayload | null;
+        const requestId = apiError?.requestId ? ` Request ${apiError.requestId}.` : "";
+        const responseDetail =
+          apiError?.error ??
+          responseText.slice(0, 500) ??
+          response.statusText ??
+          "Transcript extraction failed.";
+
+        throw new Error(
+          `Transcript extraction failed (${response.status} ${response.statusText}).${requestId} ${responseDetail}`
+        );
+      }
+
+      if (!payload || !("draft" in payload)) {
+        throw new Error(
+          `Transcript extraction returned an unexpected response from ${endpoint}: ${responseText.slice(
+            0,
+            500
+          )}`
+        );
       }
 
       const extraction = payload as ExtractionResponse;
+      if (extraction.requestId) {
+        addActivity("info", `Extraction request id: ${extraction.requestId}.`);
+      }
+
       if (extraction.debug) {
         addActivity(
           "info",
@@ -243,8 +404,7 @@ export function StoryWorkspace() {
         `Draft ready: ${countPreviewObjects(payload.draft)} typed objects and ${payload.draft.links.length} links.`
       );
     } catch (caught) {
-      const errorMessage =
-        caught instanceof Error ? caught.message : "Transcript extraction failed.";
+      const errorMessage = formatExtractionError(caught);
       setError(errorMessage);
       addActivity("error", errorMessage);
     } finally {
@@ -292,6 +452,7 @@ export function StoryWorkspace() {
       setMessage(
         `Loaded ${selectedTranscript.code ?? selectedTranscript.title}: ${payload.nodeCount} nodes, ${payload.linkCount} links.`
       );
+      setPlayGraph(null);
       addActivity(
         "success",
         `Inserted graph: ${payload.nodeCount} nodes and ${payload.linkCount} links.`
@@ -318,7 +479,46 @@ export function StoryWorkspace() {
 
       {isPlayMode ? (
         <section className={styles.playModePage} aria-label="Play mode">
-          <div className={styles.playModeCenter}>play</div>
+          <section className={styles.pastPane} aria-label="The past">
+            <div className={styles.playPaneHeader}>
+              <p>The Past</p>
+              <span>
+                {isLoadingPlayGraph
+                  ? "loading graph"
+                  : playGraph
+                    ? "Neo4j timeline"
+                    : `${playTimeline.nodes.length} moments`}
+              </span>
+            </div>
+            <div className={styles.pastGraph} aria-label="Story progression over time">
+              <ReactFlow
+                nodes={playFlow.nodes}
+                edges={playFlow.edges}
+                nodesDraggable={false}
+                nodesConnectable={false}
+                elementsSelectable={false}
+                fitView
+                minZoom={0.35}
+                maxZoom={1.4}
+              >
+                <Background />
+                <Controls />
+              </ReactFlow>
+              {playGraphError ? <p className={styles.playGraphNotice}>{playGraphError}</p> : null}
+            </div>
+          </section>
+          <aside className={styles.futurePane} aria-label="Future possibilities">
+            <div className={styles.playPaneHeader}>
+              <p>Future Possibilities</p>
+            </div>
+            <div className={styles.futureSketch} aria-hidden="true">
+              <svg viewBox="0 0 420 560">
+                {futurePlaceholderPaths.map((path, index) => (
+                  <path key={index} d={path} />
+                ))}
+              </svg>
+            </div>
+          </aside>
         </section>
       ) : (
         <div className={`${styles.shell} ${styles.dataMode}`}>
@@ -348,6 +548,7 @@ export function StoryWorkspace() {
                 setSelectedTranscriptId(transcript.id);
                 setDraft(null);
                 setDraftText("");
+                setDataGraph({ nodes: [], edges: [] });
                 setSelectedNodeId(null);
                 setMessage(null);
                 setError(null);
@@ -356,15 +557,16 @@ export function StoryWorkspace() {
               <span className={styles.transcriptCode}>{transcript.code}</span>
               <strong>{transcript.title}</strong>
               <span>{transcript.lineCount.toLocaleString()} lines</span>
-              <span className={statusClass(transcript.loadStatus.status)}>
+              <span
+                className={statusClass(transcript.loadStatus.status)}
+                aria-label={transcript.loadStatus.status === "loaded" ? "Loaded" : "Not loaded"}
+                title={transcript.loadStatus.status === "loaded" ? "Loaded" : "Not loaded"}
+              >
                 {transcript.loadStatus.status === "loaded" ? (
-                  <CheckCircle2 size={14} aria-hidden="true" />
-                ) : transcript.loadStatus.status === "failed" ? (
-                  <AlertTriangle size={14} aria-hidden="true" />
+                  <Check size={14} strokeWidth={3} aria-hidden="true" />
                 ) : (
-                  <FileText size={14} aria-hidden="true" />
+                  "?"
                 )}
-                {transcript.loadStatus.status.replace("_", " ")}
               </span>
             </button>
           ))}
@@ -377,7 +579,9 @@ export function StoryWorkspace() {
             <h2>{selectedTranscript?.title ?? "Select a transcript"}</h2>
             <p>
               {selectedTranscript
-                ? `${selectedTranscript.fileName} · ${selectedTranscript.lineCount.toLocaleString()} transcript lines`
+                ? isLoadingDataGraph && !draftText.trim()
+                  ? `${selectedTranscript.fileName} · loading graph`
+                  : `${selectedTranscript.fileName} · ${selectedTranscript.lineCount.toLocaleString()} transcript lines · ${dataModeGraph.nodes.length} graph nodes`
                 : "Load a transcript draft, review it, then insert it into Neo4j."}
             </p>
           </div>
@@ -399,18 +603,17 @@ export function StoryWorkspace() {
 
         <div className={styles.graphCanvas}>
           <ReactFlow
-            nodes={preview.nodes.map((node) => ({
+            nodes={dataModeGraph.nodes.map((node) => ({
               ...node,
               className: `${styles.storyNode} ${styles[node.data.kind] ?? ""} ${
                 node.id === selectedNodeId ? styles.selected : ""
               }`,
             }))}
-            edges={preview.edges}
+            edges={dataModeGraph.edges}
             onNodeClick={(_, node) => setSelectedNodeId(node.id)}
             fitView
           >
             <Background />
-            <MiniMap pannable zoomable />
             <Controls />
           </ReactFlow>
         </div>
@@ -474,6 +677,225 @@ export function StoryWorkspace() {
     </main>
   );
 
+}
+
+const futurePlaceholderPaths = [
+  "M 32 280 C 96 238, 132 166, 210 144 C 276 126, 322 86, 392 54",
+  "M 32 280 C 96 270, 138 248, 196 250 C 274 254, 320 226, 390 202",
+  "M 32 280 C 96 318, 128 382, 198 404 C 270 426, 320 482, 392 516",
+  "M 118 214 C 174 206, 216 184, 266 132",
+  "M 154 252 C 208 282, 256 306, 342 300",
+  "M 132 342 C 190 322, 230 350, 286 392",
+  "M 226 144 C 282 166, 316 176, 384 156",
+  "M 220 404 C 276 386, 326 394, 392 424",
+];
+
+function buildPlayTimeline(
+  playGraph: PlayModeGraph | null,
+  draft: TranscriptGraphDraft | null,
+  selectedTranscript: TranscriptListItem | null
+): { nodes: PlayTimelineNode[] } {
+  if (playGraph && playGraph.anchors.length > 0) {
+    return buildNeo4jTimeline(playGraph);
+  }
+
+  const draftMoments = draft
+    ? [
+        ...draft.scenes.map((scene) => ({
+          id: scene.id,
+          label: scene.title,
+          detail: scene.summary ?? scene.outcome ?? "Scene",
+          order: scene.startSeconds ?? Number.MAX_SAFE_INTEGER,
+          kind: "scene",
+        })),
+        ...draft.events.map((event) => ({
+          id: event.id,
+          label: event.summary,
+          detail: event.consequence ?? "Event",
+          order: event.chronologyIndex ?? event.startSeconds ?? Number.MAX_SAFE_INTEGER,
+          kind: "event",
+        })),
+      ]
+    : [];
+
+  const moments =
+    draftMoments.length > 0
+      ? draftMoments
+      : [
+          {
+            id: selectedTranscript?.id ?? "opening",
+            label: selectedTranscript?.title ?? "Opening scene",
+            detail: "Story begins.",
+            order: 0,
+            kind: "episode",
+          },
+          {
+            id: "rising-action",
+            label: "Rising action",
+            detail: "The story gathers pressure.",
+            order: 1,
+            kind: "beat",
+          },
+          {
+            id: "current-moment",
+            label: "Current moment",
+            detail: "The table arrives at now.",
+            order: 2,
+            kind: "now",
+          },
+        ];
+
+  const orderedMoments = moments
+    .sort((left, right) => left.order - right.order)
+    .slice(0, 8);
+  const lastIndex = Math.max(orderedMoments.length - 1, 1);
+
+  return {
+    nodes: orderedMoments.map((moment, index) => ({
+      id: moment.id,
+      label: truncateLabel(moment.label),
+      detail: moment.detail,
+      kind: moment.kind,
+      x: 92 + (index / lastIndex) * 812,
+      y: index % 2 === 0 ? 190 : 370,
+      layers: [],
+    })),
+  };
+}
+
+function buildNeo4jTimeline(playGraph: PlayModeGraph): { nodes: PlayTimelineNode[] } {
+  const orderedAnchors = playGraph.anchors
+    .slice()
+    .sort((left, right) => {
+      const leftOrder = left.time ?? Number.MAX_SAFE_INTEGER + left.chronologyIndex;
+      const rightOrder = right.time ?? Number.MAX_SAFE_INTEGER + right.chronologyIndex;
+
+      return leftOrder - rightOrder;
+    })
+    .slice(0, 10);
+  const lastIndex = Math.max(orderedAnchors.length - 1, 1);
+
+  return {
+    nodes: orderedAnchors.map((anchor, index) => {
+      const x = 92 + (index / lastIndex) * 812;
+      const y = 280;
+
+      return {
+        id: anchor.id,
+        label: truncateLabel(anchor.label),
+        detail: anchor.summary ?? "",
+        kind: anchor.kind,
+        x,
+        y,
+        layers: positionPlayLayers(anchor.layers, x),
+      };
+    }),
+  };
+}
+
+function positionPlayLayers(layers: PlayLayerNode[], anchorX: number): PlayTimelineLayer[] {
+  const above = layers.filter((layer) => layer.side === "above").slice(0, 6);
+  const below = layers.filter((layer) => layer.side === "below").slice(0, 6);
+
+  return [
+    ...above.map((layer, index) => ({
+      ...layer,
+      x: anchorX + [-86, 86, -38, 38, -118, 118][index],
+      y: [146, 146, 62, 62, -22, -22][index],
+    })),
+    ...below.map((layer, index) => ({
+      ...layer,
+      x: anchorX + [-86, 86, -38, 38, -118, 118][index],
+      y: [410, 410, 494, 494, 578, 578][index],
+    })),
+  ];
+}
+
+function buildPlayFlow(timeline: { nodes: PlayTimelineNode[] }): {
+  nodes: Node<PreviewNodeData>[];
+  edges: Edge[];
+} {
+  const flowNodes: Node<PreviewNodeData>[] = [
+    {
+      id: "time-axis-start",
+      position: { x: 28, y: 342 },
+      data: { label: "earlier", kind: "time", detail: "" },
+      className: styles.timeMarkerNode,
+      selectable: false,
+      draggable: false,
+    },
+    {
+      id: "time-axis-end",
+      position: { x: 960, y: 342 },
+      data: { label: "now", kind: "time", detail: "" },
+      className: styles.timeMarkerNode,
+      selectable: false,
+      draggable: false,
+    },
+  ];
+
+  const edges: Edge[] = [
+    {
+      id: "time-axis",
+      source: "time-axis-start",
+      target: "time-axis-end",
+      className: styles.playTimeAxis,
+      markerEnd: { type: MarkerType.ArrowClosed },
+      selectable: false,
+    },
+  ];
+
+  timeline.nodes.forEach((node, index) => {
+    flowNodes.push({
+      id: node.id,
+      position: { x: node.x - 82, y: 314 },
+      data: {
+        label: node.label,
+        kind: node.kind,
+        detail: node.detail,
+      },
+      className: styles.playAnchorNode,
+      selectable: false,
+      draggable: false,
+    });
+
+    if (index < timeline.nodes.length - 1) {
+      edges.push({
+        id: `${node.id}-${timeline.nodes[index + 1].id}`,
+        source: node.id,
+        target: timeline.nodes[index + 1].id,
+        className: styles.playTimelineEdge,
+        selectable: false,
+      });
+    }
+
+    node.layers.forEach((layer) => {
+      const layerId = `${node.id}-${layer.id}`;
+
+      flowNodes.push({
+        id: layerId,
+        position: { x: layer.x - 72, y: layer.y - 28 },
+        data: {
+          label: layer.label,
+          kind: layer.kind,
+          detail: layer.detail ?? "",
+        },
+        className: `${styles.playLayerNode} ${styles[layer.side]}`,
+        selectable: false,
+        draggable: false,
+      });
+
+      edges.push({
+        id: `${node.id}-${layer.id}-connector`,
+        source: node.id,
+        target: layerId,
+        className: styles.playLayerEdge,
+        selectable: false,
+      });
+    });
+  });
+
+  return { nodes: flowNodes, edges };
 }
 
 function buildPreview(draft: TranscriptGraphDraft | null): {
@@ -582,6 +1004,33 @@ function logLevelClass(level: ActivityLog["level"]) {
   return styles.logInfo;
 }
 
+function parseJsonResponse(responseText: string) {
+  if (!responseText.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(responseText) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function formatExtractionError(caught: unknown) {
+  if (caught instanceof TypeError && caught.message === "Failed to fetch") {
+    return [
+      "Network failure while calling /api/transcripts/extract.",
+      "The browser did not receive an HTTP response, so check the Network tab and the Next terminal for a matching [transcripts/extract:*] request log.",
+    ].join(" ");
+  }
+
+  if (caught instanceof Error) {
+    return caught.message;
+  }
+
+  return "Transcript extraction failed.";
+}
+
 function formatNumber(value: number) {
   return value.toLocaleString();
 }
@@ -592,4 +1041,8 @@ function formatDuration(durationMs: number) {
   }
 
   return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+function truncateLabel(value: string) {
+  return value.length > 54 ? `${value.slice(0, 51)}...` : value;
 }

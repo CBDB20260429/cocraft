@@ -6,12 +6,15 @@ type GraphNodeProperties = {
   id?: string;
   name?: string;
   title?: string;
+  label?: string;
   summary?: string | null;
   description?: string | null;
+  objective?: string | null;
+  status?: string | null;
 };
 
 type GraphRow = {
-  node: Node<number, GraphNodeProperties>;
+  source: Node<number, GraphNodeProperties>;
   target: Node<number, GraphNodeProperties> | null;
   relationship: Relationship<number, Record<string, unknown>> | null;
 };
@@ -27,9 +30,18 @@ const visibleLabels = [
   "Revelation",
   "Faction",
   "Theme",
+  "TranscriptSpan",
+  "Person",
+  "Item",
+  "Arc",
+  "Motivation",
+  "Relationship",
+  "GameMechanic",
 ];
 
-export async function GET() {
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const transcriptId = url.searchParams.get("transcriptId");
   const driver = getDriver();
 
   if (!driver) {
@@ -39,39 +51,64 @@ export async function GET() {
   const session = driver.session({ database: getDatabaseName() });
 
   try {
-    const result = await session.run<GraphRow>(
-      `
-        match (node)
-        where any(label in labels(node) where label in $labels)
-        optional match (node)-[relationship]->(target)
-        where any(label in labels(target) where label in $labels)
-        return node, relationship, target
-        limit 250
-      `,
-      { labels: visibleLabels }
-    );
+    const result = transcriptId
+      ? await session.run<GraphRow>(
+          `
+            match (episode:Episode {id: $transcriptId})
+            call {
+              with episode
+              match (episode)-[relationship]-(target)
+              where any(label in labels(target) where label in $labels)
+              return relationship
 
-    const nodeMap = new Map<number, Node<number, GraphNodeProperties>>();
-    const edges = [];
+              union
+
+              with episode
+              match (episode)-[]-(middle)-[relationship]-(target)
+              where any(label in labels(middle) where label in $labels)
+                and any(label in labels(target) where label in $labels)
+              return relationship
+            }
+            with distinct relationship
+            return startNode(relationship) as source, relationship, endNode(relationship) as target
+            limit 300
+          `,
+          { labels: visibleLabels, transcriptId }
+        )
+      : await session.run<GraphRow>(
+          `
+            match (source)-[relationship]->(target)
+            where any(label in labels(source) where label in $labels)
+              and any(label in labels(target) where label in $labels)
+            return source, relationship, target
+            limit 250
+          `,
+          { labels: visibleLabels }
+        );
+
+    const nodeMap = new Map<string, Node<number, GraphNodeProperties>>();
+    const edgeMap = new Map<string, { id: string; source: string; target: string; label: string }>();
 
     for (const record of result.records) {
-      const node = record.get("node");
+      const source = record.get("source");
       const relationship = record.get("relationship");
       const target = record.get("target");
 
-      nodeMap.set(node.identity, node);
+      nodeMap.set(getNodeId(source), source);
 
       if (target) {
-        nodeMap.set(target.identity, target);
+        nodeMap.set(getNodeId(target), target);
       }
 
       if (relationship && target) {
-        edges.push({
-          id: relationship.properties.id
-            ? String(relationship.properties.id)
-            : String(relationship.identity),
-          source: node.properties.id ?? String(node.identity),
-          target: target.properties.id ?? String(target.identity),
+        const edgeId = relationship.properties.id
+          ? String(relationship.properties.id)
+          : String(relationship.identity);
+
+        edgeMap.set(edgeId, {
+          id: edgeId,
+          source: getNodeId(source),
+          target: getNodeId(target),
           label: relationship.type.replaceAll("_", " ").toLowerCase(),
         });
       }
@@ -84,14 +121,28 @@ export async function GET() {
         y: 80 + Math.floor(index / 5) * 150,
       },
       data: {
-        label: node.properties.name ?? node.properties.title ?? "Untitled",
+        label:
+          node.properties.name ??
+          node.properties.title ??
+          node.properties.label ??
+          node.properties.summary ??
+          "Untitled",
         kind: node.labels[0]?.toLowerCase() ?? "node",
-        detail: node.properties.summary ?? node.properties.description ?? "",
+        detail:
+          node.properties.summary ??
+          node.properties.description ??
+          node.properties.objective ??
+          node.properties.status ??
+          "",
       },
     }));
 
-    return NextResponse.json({ nodes, edges });
+    return NextResponse.json({ nodes, edges: Array.from(edgeMap.values()) });
   } finally {
     await session.close();
   }
+}
+
+function getNodeId(node: Node<number, GraphNodeProperties>) {
+  return node.properties.id ?? String(node.identity);
 }

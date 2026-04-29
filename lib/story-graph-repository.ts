@@ -7,6 +7,7 @@ import {
   type TranscriptGraphDraft,
   type TranscriptGraphLink,
 } from "@/lib/story-graph-types";
+import type { PlayLayerNode, PlayLayerSide, PlayModeGraph, PlayTimeAnchor } from "@/lib/play-mode-types";
 
 export type TranscriptLoadStatus = {
   transcriptId: string;
@@ -63,6 +64,31 @@ const collectionLabels: Array<{
   { label: "GameMechanic", key: "gameMechanics" },
 ];
 
+const playDetailLabels = [
+  "Character",
+  "CharacterState",
+  "Place",
+  "Faction",
+  "Item",
+  "Arc",
+  "Quest",
+  "Conflict",
+  "Revelation",
+  "Motivation",
+  "Relationship",
+  "Theme",
+  "GameMechanic",
+];
+
+const aboveLayerLabels = new Set([
+  "Character",
+  "CharacterState",
+  "Revelation",
+  "Motivation",
+  "Relationship",
+  "Theme",
+]);
+
 export async function getTranscriptLoadStatuses(
   transcripts: TranscriptInfo[]
 ): Promise<Map<string, TranscriptLoadStatus>> {
@@ -112,6 +138,128 @@ export async function getTranscriptLoadStatuses(
   }
 
   return statuses;
+}
+
+export async function getPlayModeGraph(transcriptId: string): Promise<PlayModeGraph | null> {
+  const driver = getDriver();
+  if (!driver) {
+    return null;
+  }
+
+  const session = driver.session({ database: getDatabaseName() });
+
+  try {
+    const result = await session.run(
+      `
+        match (episode:Episode {id: $transcriptId})
+        call {
+          with episode
+          match (episode)-[:CONTAINS]->(anchor:Scene)
+          return anchor, labels(anchor) as anchorLabels,
+            coalesce(anchor.startSeconds, anchor.endSeconds) as anchorTime,
+            coalesce(anchor.startSeconds, anchor.endSeconds, 1000000000) as anchorOrder
+
+          union
+
+          with episode
+          match (episode)-[:HAS_BEAT]->(anchor:Beat)
+          return anchor, labels(anchor) as anchorLabels,
+            null as anchorTime,
+            coalesce(anchor.order, 1000000000) as anchorOrder
+
+          union
+
+          with episode
+          match (episode)-[:HAS_EVENT]->(anchor:Event)
+          return anchor, labels(anchor) as anchorLabels,
+            coalesce(anchor.startSeconds, anchor.endSeconds) as anchorTime,
+            coalesce(anchor.chronologyIndex, anchor.startSeconds, anchor.endSeconds, 1000000000) as anchorOrder
+        }
+        optional match (anchor)-[relationship]-(detail)
+        where detail is null or any(label in labels(detail) where label in $detailLabels)
+        return episode,
+          anchor,
+          anchorLabels,
+          anchorTime,
+          anchorOrder,
+          collect(distinct {
+            node: detail,
+            labels: labels(detail),
+            relationshipType: type(relationship)
+          }) as details
+        order by anchorOrder asc
+        limit 80
+      `,
+      {
+        transcriptId,
+        detailLabels: playDetailLabels,
+      }
+    );
+
+    if (result.records.length === 0) {
+      const episodeResult = await session.run(
+        `
+          match (episode:Episode {id: $transcriptId})
+          return episode
+        `,
+        { transcriptId }
+      );
+
+      if (episodeResult.records.length === 0) {
+        return null;
+      }
+
+      const episodeProperties = episodeResult.records[0].get("episode").properties;
+
+      return {
+        transcriptId,
+        episode: {
+          id: String(episodeProperties.id ?? transcriptId),
+          title: String(episodeProperties.title ?? "Untitled episode"),
+          summary: nullableString(episodeProperties.summary),
+        },
+        anchors: [
+          {
+            id: String(episodeProperties.id ?? transcriptId),
+            label: String(episodeProperties.title ?? "Episode"),
+            kind: "episode",
+            time: null,
+            chronologyIndex: 0,
+            summary: nullableString(episodeProperties.summary),
+            layers: [],
+          },
+        ],
+      };
+    }
+
+    const firstEpisode = result.records[0].get("episode").properties;
+
+    return {
+      transcriptId,
+      episode: {
+        id: String(firstEpisode.id ?? transcriptId),
+        title: String(firstEpisode.title ?? "Untitled episode"),
+        summary: nullableString(firstEpisode.summary),
+      },
+      anchors: result.records.map((record, index) => {
+        const anchor = record.get("anchor");
+        const anchorProperties = anchor.properties as Record<string, unknown>;
+        const anchorLabels = record.get("anchorLabels") as string[];
+
+        return {
+          id: String(anchorProperties.id ?? anchor.identity),
+          label: getNodeLabel(anchorProperties, anchorLabels[0] ?? "Moment"),
+          kind: getAnchorKind(anchorLabels),
+          time: nullableNumber(record.get("anchorTime")),
+          chronologyIndex: index,
+          summary: nullableString(anchorProperties.summary ?? anchorProperties.description),
+          layers: readPlayLayers(record.get("details")),
+        };
+      }),
+    };
+  } finally {
+    await session.close();
+  }
 }
 
 export async function insertTranscriptGraph(
@@ -396,6 +544,104 @@ function readFirstCount(result: unknown, key: string) {
   }
 
   return toNumber(record.get(key));
+}
+
+function readPlayLayers(details: unknown): PlayLayerNode[] {
+  if (!Array.isArray(details)) {
+    return [];
+  }
+
+  const layers = details
+    .map((detail) => {
+      if (!detail || typeof detail !== "object" || !("node" in detail)) {
+        return null;
+      }
+
+      const node = detail.node;
+      if (!node || typeof node !== "object" || !("properties" in node)) {
+        return null;
+      }
+
+      const labels = "labels" in detail && Array.isArray(detail.labels) ? detail.labels : [];
+      const properties = node.properties as Record<string, unknown>;
+      const kind = String(labels[0] ?? "Node");
+
+      return {
+        id: String(properties.id ?? getNodeIdentity(node)),
+        label: getNodeLabel(properties, kind),
+        kind: kind.toLowerCase(),
+        side: getLayerSide(kind),
+        detail: nullableString(properties.summary ?? properties.description ?? properties.status),
+        relationshipType:
+          "relationshipType" in detail ? nullableString(detail.relationshipType) : null,
+      };
+    })
+    .filter((layer): layer is PlayLayerNode => Boolean(layer));
+
+  return layers.slice(0, 8);
+}
+
+function getNodeLabel(properties: Record<string, unknown>, fallback: string) {
+  const label = properties.name ?? properties.title ?? properties.label ?? properties.summary;
+
+  if (typeof label === "string" && label.trim()) {
+    return label;
+  }
+
+  return fallback;
+}
+
+function getAnchorKind(labels: string[]): PlayTimeAnchor["kind"] {
+  if (labels.includes("Scene")) {
+    return "scene";
+  }
+
+  if (labels.includes("Beat")) {
+    return "beat";
+  }
+
+  if (labels.includes("Event")) {
+    return "event";
+  }
+
+  return "episode";
+}
+
+function getLayerSide(label: string): PlayLayerSide {
+  return aboveLayerLabels.has(label) ? "above" : "below";
+}
+
+function getNodeIdentity(node: unknown) {
+  if (node && typeof node === "object" && "identity" in node) {
+    return node.identity;
+  }
+
+  return randomUUID();
+}
+
+function nullableString(value: unknown) {
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+
+  return null;
+}
+
+function nullableNumber(value: unknown) {
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (
+    value &&
+    typeof value === "object" &&
+    "toNumber" in value &&
+    typeof value.toNumber === "function"
+  ) {
+    return value.toNumber();
+  }
+
+  return null;
 }
 
 function toNumber(value: unknown) {
