@@ -26,10 +26,18 @@ Apply constraints and indexes:
 npm run db:migrate
 ```
 
-The current graph model uses:
+The current graph model uses the transcript ontology in
+`docs/story-graph-schema-proposal.md`.
 
-- `(:StorySession)` for a co-creation session.
-- `(:StoryNode)` for history, current-state, and possible-future nodes.
-- `(:NarrativeTurn)` for user action plus generated narrative output.
-- `(:StateSnapshot)` for the full generated graph payload.
-- `[:HAS_NODE]`, `[:HAS_TURN]`, `[:HAS_SNAPSHOT]`, and `[:STORY_EDGE]` relationships.
+Core labels include:
+
+- `(:TranscriptSource)`, `(:Episode)`, and `(:TranscriptSpan)` for source
+  evidence and provenance. Raw transcript lines are parsed during extraction but
+  are not persisted as graph nodes.
+- `(:Person)`, `(:Character)`, `(:CharacterState)`, `(:Place)`,
+  `(:Faction)`, and `(:Item)` for table participants and story-world entities.
+- `(:Arc)`, `(:Scene)`, `(:Beat)`, `(:Event)`, `(:Quest)`, `(:Conflict)`,
+  `(:Revelation)`, `(:Motivation)`, `(:Relationship)`, and `(:Theme)` for
+  narrative structure.
+- `(:GameMechanic)` for actual-play rules and mechanics.
+- `(:TranscriptGraphLoad)` for tracking which transcript files have been loaded.

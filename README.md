@@ -1,11 +1,12 @@
 # Cocraft
 
-Cocraft is a browser-based storytelling harness for co-creation. The MVP stack is:
+Cocraft is a browser-based storytelling graph pipeline for transcript ingestion,
+manual review, and Neo4j persistence. The stack is:
 
 - Next.js + TypeScript on Node.js
 - React Flow for graph display and node selection
 - Neo4j for application and graph persistence
-- OpenAI Agents SDK for narrative orchestration
+- OpenAI API for transcript-to-graph extraction
 
 ## Setup
 
@@ -46,3 +47,14 @@ npm run dev
 ```
 
 Then open http://localhost:3000.
+
+## Transcript Pipeline
+
+The home page lists Markdown files from `transcripts/` and shows whether each
+episode has been loaded into the graph. The workflow is intentionally paused at
+the review step:
+
+1. Select a transcript.
+2. Click `Load Draft` to send the transcript through the OpenAI extraction pass.
+3. Review or edit the generated graph JSON.
+4. Click `Insert Approved` to write the typed graph data into Neo4j.
