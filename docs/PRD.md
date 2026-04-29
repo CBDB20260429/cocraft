@@ -170,21 +170,69 @@ Deliver a storytelling harness that generates meaningful, engaging, and emotiona
 
 ---
 
-## 10. User Interface (Placeholder)
+## 10. Product Form
 
-*To be defined*
+### 10.1 Delivery Form
+- Browser-accessible web application
+- Public-facing prototype suitable for demonstration and feedback gathering
+- Responsive interface supporting desktop-first use, with mobile-friendly access where practical
+- Real-time or near-real-time interaction loop between user input, narrative generation, state updates, and graph updates
+
+### 10.2 Primary Interface
+- Narrative interaction panel:
+  - User enters actions, decisions, constraints, or creative direction
+  - System returns narrative progression, dialogue, events, and suggested possible futures
+  - Session history remains visible enough to support continuity and replay
+- Graph display:
+  - Visualizes story state, narrative branches, locations, characters, quests, events, and future possibilities where applicable
+  - Supports graph-based navigation for sandbox storytelling
+  - Supports state + probabilistic future mapping for co-creation storytelling
+  - Updates as the user and system co-create the story
+- Node interaction:
+  - Users can select nodes in the graph to inspect story details, context, relationships, and available actions
+  - Node selection can influence the next user action or narrative generation prompt
+  - Selected nodes should provide clear affordances for continuation, exploration, or constraint-setting
+
+### 10.3 Technical Form Factors
+- Frontend graph visualization library: to be selected
+- Application language: TypeScript
+- Application runtime: Node.js
+- Primary application database: PostgreSQL
+- Graph database: PostgreSQL, using explicit graph-oriented tables for nodes, edges, relationships, sessions, and state snapshots
+- Vector and memory storage: PostgreSQL with vector extension support to be evaluated
+- LLM provider: OpenAI
+- Model orchestration layer: OpenAI Agents SDK, using OpenAI models through an `OPENAI_API_KEY`
+- Hosting environment: to be selected
+
+### 10.4 UX Considerations
+- The graph should support exploration without overwhelming the core storytelling flow
+- The interface should balance textual immersion with structured visibility into story state
+- Graph interactions should feel optional but useful, not mandatory for basic narrative participation
+- The system should make it clear when a node represents established story history, current state, or a possible future
 
 ---
 
-## 11. Data Sources
+## 11. User Interface
+
+Detailed interface design is still to be defined. The initial product form should prioritize:
+- Low-friction browser access
+- A clear narrative input/output loop
+- An interactive graph display
+- Inspectable and selectable graph nodes
+- Visible session continuity and replay affordances
+
+---
+
+## 12. Data Sources
 
 - Public storytelling datasets (e.g., role-playing transcripts)
 - Classic literature corpora
 - Generated narrative data from system sessions
+- User-generated session histories, graph nodes, graph edges, story state snapshots, and future possibility mappings stored in PostgreSQL
 
 ---
 
-## 12. Demonstration Plan
+## 13. Demonstration Plan
 
 - Run ~25 simulated storytelling sessions
 - Use role-playing scenarios
@@ -195,24 +243,27 @@ Deliver a storytelling harness that generates meaningful, engaging, and emotiona
 
 ---
 
-## 13. Constraints
+## 14. Constraints
 
 - Simplicity of initial prototype
 - Limited development time/resources
 - Dependence on available datasets
 - Need to avoid artificial or low-quality outputs
+- OpenAI API access depends on a configured `OPENAI_API_KEY`
+- API keys and model credentials must remain server-side and must not be exposed in browser-delivered code
+- PostgreSQL will serve as both the primary application database and the graph persistence layer for the MVP
 
 ---
 
-## 14. Risks & Mitigations
+## 15. Risks & Mitigations
 
-### 14.1 Risks
+### 15.1 Risks
 - Narrative incoherence
 - User disengagement
 - Over-complex system design
 - Uncanny or artificial storytelling tone
 
-### 14.2 Mitigations
+### 15.2 Mitigations
 - Constrain initial scope
 - Focus on co-creation clarity
 - Use high-quality datasets
@@ -220,39 +271,42 @@ Deliver a storytelling harness that generates meaningful, engaging, and emotiona
 
 ---
 
-## 15. Development Plan
+## 16. Development Plan
 
-### 15.1 Phase 1: Ideation & Planning
+### 16.1 Phase 1: Ideation & Planning
 - Define system concept
 - Document requirements
 
-### 15.2 Phase 2: Prototype Development
+### 16.2 Phase 2: Prototype Development
 - Build storytelling harness
 - Implement co-creation engine
 - Develop simple interface
 
-### 15.3 Phase 3: Testing & Iteration
+### 16.3 Phase 3: Testing & Iteration
 - Run multiple sessions
 - Analyze outputs
 - Refine system behavior
 
-### 15.4 Phase 4: Public Demonstration
+### 16.4 Phase 4: Public Demonstration
 - Launch prototype
 - Share interactive experience
 - Gather feedback
 
 ---
 
-## 16. Open Questions
+## 17. Open Questions
 
 - How should future possibilities be represented and prioritized?
 - What level of memory persistence is required across sessions?
 - How to measure narrative quality effectively?
 - What interaction model best supports co-creation?
+- How directly should graph node selection influence prompt construction and narrative generation?
+- What PostgreSQL schema should best represent graph nodes, edges, narrative turns, state snapshots, and probabilistic future mappings?
+- Which OpenAI model should be the default for narrative generation, and should different model tiers be used for drafting, summarization, memory extraction, and evaluation?
 
 ---
 
-## 17. Key Principle
+## 18. Key Principle
 
 > The system does not tell a story—it enables users to create one in real time.
 ```
