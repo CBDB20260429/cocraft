@@ -197,9 +197,9 @@ Deliver a storytelling harness that generates meaningful, engaging, and emotiona
 - Frontend graph visualization library: to be selected
 - Application language: TypeScript
 - Application runtime: Node.js
-- Primary application database: PostgreSQL
-- Graph database: PostgreSQL, using explicit graph-oriented tables for nodes, edges, relationships, sessions, and state snapshots
-- Vector and memory storage: PostgreSQL with vector extension support to be evaluated
+- Primary application database: Neo4j
+- Graph database: Neo4j, using native nodes and relationships for sessions, story nodes, narrative turns, state snapshots, and future possibility mappings
+- Vector and memory storage: Neo4j vector index support to be evaluated
 - LLM provider: OpenAI
 - Model orchestration layer: OpenAI Agents SDK, using OpenAI models through an `OPENAI_API_KEY`
 - Hosting environment: to be selected
@@ -228,7 +228,7 @@ Detailed interface design is still to be defined. The initial product form shoul
 - Public storytelling datasets (e.g., role-playing transcripts)
 - Classic literature corpora
 - Generated narrative data from system sessions
-- User-generated session histories, graph nodes, graph edges, story state snapshots, and future possibility mappings stored in PostgreSQL
+- User-generated session histories, graph nodes, graph edges, story state snapshots, and future possibility mappings stored in Neo4j
 
 ---
 
@@ -251,7 +251,7 @@ Detailed interface design is still to be defined. The initial product form shoul
 - Need to avoid artificial or low-quality outputs
 - OpenAI API access depends on a configured `OPENAI_API_KEY`
 - API keys and model credentials must remain server-side and must not be exposed in browser-delivered code
-- PostgreSQL will serve as both the primary application database and the graph persistence layer for the MVP
+- Neo4j will serve as both the primary application database and the graph persistence layer for the MVP
 
 ---
 
@@ -301,7 +301,7 @@ Detailed interface design is still to be defined. The initial product form shoul
 - How to measure narrative quality effectively?
 - What interaction model best supports co-creation?
 - How directly should graph node selection influence prompt construction and narrative generation?
-- What PostgreSQL schema should best represent graph nodes, edges, narrative turns, state snapshots, and probabilistic future mappings?
+- What Neo4j node labels, relationship types, constraints, and indexes should best represent narrative turns, state snapshots, and probabilistic future mappings?
 - Which OpenAI model should be the default for narrative generation, and should different model tiers be used for drafting, summarization, memory extraction, and evaluation?
 
 ---
