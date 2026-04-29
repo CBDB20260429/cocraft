@@ -13,6 +13,9 @@ export type PlayTimeAnchor = {
   id: string;
   label: string;
   kind: "episode" | "scene" | "beat" | "event";
+  episodeId: string;
+  episodeCode: string | null;
+  episodeTitle: string | null;
   time: number | null;
   chronologyIndex: number;
   summary: string | null;

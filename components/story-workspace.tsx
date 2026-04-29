@@ -3,19 +3,24 @@
 import {
   Background,
   Controls,
+  Handle,
   MarkerType,
+  Position,
   ReactFlow,
   type Edge,
   type Node,
+  type NodeProps,
 } from "@xyflow/react";
 import {
   Check,
   Database,
   Play,
   RefreshCw,
+  Sparkles,
   Upload,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
+import type { FuturePrediction } from "@/lib/future-prediction-types";
 import type { PlayLayerNode, PlayModeGraph } from "@/lib/play-mode-types";
 import type { TranscriptGraphDraft } from "@/lib/story-graph-types";
 import { Switch } from "@/components/ui/switch";
@@ -62,6 +67,8 @@ type PlayTimelineNode = {
   x: number;
   y: number;
   kind: string;
+  role: "episode" | "moment";
+  parentEpisodeId: string | null;
   layers: PlayTimelineLayer[];
 };
 
@@ -108,6 +115,19 @@ type ApiErrorPayload = {
   issues?: unknown;
 };
 
+type FuturePredictionResponse = {
+  predictions: FuturePrediction[];
+  debug?: {
+    provider: string;
+    model: string;
+    contextNodeCount: number;
+    contextRelationshipCount: number;
+    durationMs: number;
+    responseId: string | null;
+    outputChars: number;
+  };
+};
+
 const previewGroups: Array<{
   key: keyof TranscriptGraphDraft;
   label: string;
@@ -134,11 +154,15 @@ export function StoryWorkspace() {
   const [isLoadingList, setIsLoadingList] = useState(true);
   const [isLoadingDataGraph, setIsLoadingDataGraph] = useState(false);
   const [isLoadingPlayGraph, setIsLoadingPlayGraph] = useState(false);
+  const [isLoadingFuturePredictions, setIsLoadingFuturePredictions] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isInserting, setIsInserting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [playGraphError, setPlayGraphError] = useState<string | null>(null);
+  const [futurePredictionError, setFuturePredictionError] = useState<string | null>(null);
+  const [futurePredictions, setFuturePredictions] = useState<FuturePrediction[]>([]);
+  const [selectedFuturePredictionId, setSelectedFuturePredictionId] = useState<string | null>(null);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
 
   const addActivity = useCallback((level: ActivityLog["level"], activityMessage: string) => {
@@ -204,6 +228,11 @@ export function StoryWorkspace() {
 
   const preview = useMemo(() => buildPreview(parsedDraft), [parsedDraft]);
   const dataModeGraph = parsedDraft ? preview : dataGraph;
+  const constellationGraph = useMemo(
+    () => buildConstellationGraph(dataModeGraph, selectedNodeId),
+    [dataModeGraph, selectedNodeId]
+  );
+  const nodeTypes = useMemo(() => ({ storyDot: StoryDotNode }), []);
   const playTimeline = useMemo(
     () => buildPlayTimeline(playGraph, parsedDraft, selectedTranscript),
     [playGraph, parsedDraft, selectedTranscript]
@@ -212,6 +241,13 @@ export function StoryWorkspace() {
   const selectedPreviewNode = useMemo(
     () => dataModeGraph.nodes.find((node) => node.id === selectedNodeId) ?? null,
     [dataModeGraph.nodes, selectedNodeId]
+  );
+  const selectedFuturePrediction = useMemo(
+    () =>
+      futurePredictions.find((prediction) => prediction.id === selectedFuturePredictionId) ??
+      futurePredictions[0] ??
+      null,
+    [futurePredictions, selectedFuturePredictionId]
   );
   const isPlayMode = displayMode === "play";
   const displayModeControl = (
@@ -227,19 +263,18 @@ export function StoryWorkspace() {
   );
 
   useEffect(() => {
-    if (!isPlayMode || !selectedTranscript) {
+    if (!isPlayMode) {
       return;
     }
 
     let ignore = false;
-    const transcript = selectedTranscript;
 
     async function loadPlayGraph() {
       setIsLoadingPlayGraph(true);
       setPlayGraphError(null);
 
       try {
-        const response = await fetch(`/api/graph/play?transcriptId=${transcript.id}`);
+        const response = await fetch("/api/graph/play");
         const payload = (await response.json()) as { graph?: PlayModeGraph; error?: string };
 
         if (!response.ok) {
@@ -268,7 +303,65 @@ export function StoryWorkspace() {
     return () => {
       ignore = true;
     };
-  }, [isPlayMode, selectedTranscript]);
+  }, [isPlayMode]);
+
+  const loadFuturePredictions = useCallback(async () => {
+    if (!selectedTranscript || !isPlayMode) {
+      return;
+    }
+
+    setIsLoadingFuturePredictions(true);
+    setFuturePredictionError(null);
+    addActivity(
+      "info",
+      `Generating future cards for ${selectedTranscript.code ?? selectedTranscript.title}.`
+    );
+
+    try {
+      const response = await fetch(`/api/graph/future?transcriptId=${selectedTranscript.id}`);
+      const payload = (await response.json()) as FuturePredictionResponse | ApiErrorPayload;
+
+      if (!response.ok) {
+        throw new Error(
+          "error" in payload && payload.error ? payload.error : "Could not generate futures."
+        );
+      }
+
+      const futurePayload = payload as FuturePredictionResponse;
+      setFuturePredictions(futurePayload.predictions);
+      setSelectedFuturePredictionId(futurePayload.predictions[0]?.id ?? null);
+
+      if (futurePayload.debug) {
+        addActivity(
+          "success",
+          `Generated ${futurePayload.predictions.length} future cards from ${futurePayload.debug.contextNodeCount} graph nodes and ${futurePayload.debug.contextRelationshipCount} relationships.`
+        );
+      } else {
+        addActivity("success", `Generated ${futurePayload.predictions.length} future cards.`);
+      }
+    } catch (caught) {
+      const errorMessage =
+        caught instanceof Error ? caught.message : "Could not generate future predictions.";
+      setFuturePredictions([]);
+      setSelectedFuturePredictionId(null);
+      setFuturePredictionError(errorMessage);
+      addActivity("error", errorMessage);
+    } finally {
+      setIsLoadingFuturePredictions(false);
+    }
+  }, [addActivity, isPlayMode, selectedTranscript]);
+
+  useEffect(() => {
+    if (!isPlayMode || !selectedTranscript) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void loadFuturePredictions();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [isPlayMode, loadFuturePredictions, selectedTranscript]);
 
   useEffect(() => {
     if (isPlayMode || !selectedTranscript || draftText.trim()) {
@@ -479,16 +572,11 @@ export function StoryWorkspace() {
 
       {isPlayMode ? (
         <section className={styles.playModePage} aria-label="Play mode">
-          <section className={styles.pastPane} aria-label="The past">
+          <div className={styles.playPaneGrid}>
+          <section className={styles.pastPane} aria-label="The story so far">
             <div className={styles.playPaneHeader}>
-              <p>The Past</p>
-              <span>
-                {isLoadingPlayGraph
-                  ? "loading graph"
-                  : playGraph
-                    ? "Neo4j timeline"
-                    : `${playTimeline.nodes.length} moments`}
-              </span>
+              <p>The story so far</p>
+              {isLoadingPlayGraph ? <span>loading graph</span> : null}
             </div>
             <div className={styles.pastGraph} aria-label="Story progression over time">
               <ReactFlow
@@ -498,7 +586,7 @@ export function StoryWorkspace() {
                 nodesConnectable={false}
                 elementsSelectable={false}
                 fitView
-                minZoom={0.35}
+                minZoom={0.05}
                 maxZoom={1.4}
               >
                 <Background />
@@ -507,18 +595,87 @@ export function StoryWorkspace() {
               {playGraphError ? <p className={styles.playGraphNotice}>{playGraphError}</p> : null}
             </div>
           </section>
-          <aside className={styles.futurePane} aria-label="Future possibilities">
+          <aside className={styles.futurePane} aria-label="What's next?">
             <div className={styles.playPaneHeader}>
-              <p>Future Possibilities</p>
+              <p>What&apos;s next?</p>
+              <button
+                className={styles.iconButton}
+                onClick={loadFuturePredictions}
+                disabled={!selectedTranscript || isLoadingFuturePredictions}
+                title="Regenerate future cards"
+                aria-label="Regenerate future cards"
+              >
+                <RefreshCw size={16} aria-hidden="true" />
+              </button>
             </div>
-            <div className={styles.futureSketch} aria-hidden="true">
-              <svg viewBox="0 0 420 560">
-                {futurePlaceholderPaths.map((path, index) => (
-                  <path key={index} d={path} />
+            <div className={styles.futureCards}>
+              <svg className={styles.futureBranchMap} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                {futureBranchLayouts.map((branch, index) => (
+                  <path key={`${branch.path}-${index}`} d={branch.path} />
                 ))}
               </svg>
+              {isLoadingFuturePredictions ? (
+                <div className={styles.futureNotice}>
+                  <Sparkles size={18} aria-hidden="true" />
+                  <p>Reading the graph pressure and drafting futures.</p>
+                </div>
+              ) : futurePredictionError ? (
+                <div className={styles.futureNotice}>
+                  <p>{futurePredictionError}</p>
+                </div>
+              ) : futurePredictions.length === 0 ? (
+                <div className={styles.futureNotice}>
+                  <p>Switch to a loaded transcript to generate future cards.</p>
+                </div>
+              ) : (
+                futurePredictions.map((prediction, index) => {
+                  const isSelected = prediction.id === selectedFuturePrediction?.id;
+                  const branch = futureBranchLayouts[
+                    index % futureBranchLayouts.length
+                  ];
+
+                  return (
+                    <button
+                      key={prediction.id}
+                      className={`${styles.futureCard} ${styles[prediction.tone]} ${
+                        isSelected ? styles.selectedFutureCard : ""
+                      }`}
+                      style={{
+                        left: `${branch.x}%`,
+                        top: `${branch.y}%`,
+                      }}
+                      onClick={() => setSelectedFuturePredictionId(prediction.id)}
+                    >
+                      <span className={styles.futureCardMeta}>
+                        <span>{prediction.probability}</span>
+                        <span>{prediction.horizon}</span>
+                      </span>
+                      <strong>{prediction.title}</strong>
+                      <p>{prediction.summary}</p>
+                      {isSelected ? (
+                        <div className={styles.futureCardDetail}>
+                          {prediction.evidence.length > 0 ? (
+                            <div className={styles.futureEvidenceList}>
+                              {prediction.evidence.slice(0, 2).map((evidence) => (
+                                <span key={`${prediction.id}-${evidence.nodeId}`}>
+                                  {evidence.reason}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                          {prediction.playerLevers[0] ? (
+                            <span>{prediction.playerLevers[0]}</span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </button>
+                  );
+                })
+              )}
             </div>
           </aside>
+          </div>
+          {renderActivityLog(activityLogs, () => setActivityLogs([]))}
         </section>
       ) : (
         <div className={`${styles.shell} ${styles.dataMode}`}>
@@ -603,17 +760,20 @@ export function StoryWorkspace() {
 
         <div className={styles.graphCanvas}>
           <ReactFlow
-            nodes={dataModeGraph.nodes.map((node) => ({
-              ...node,
-              className: `${styles.storyNode} ${styles[node.data.kind] ?? ""} ${
-                node.id === selectedNodeId ? styles.selected : ""
-              }`,
-            }))}
-            edges={dataModeGraph.edges}
+            nodes={constellationGraph.nodes}
+            edges={constellationGraph.edges}
+            nodeTypes={nodeTypes}
             onNodeClick={(_, node) => setSelectedNodeId(node.id)}
             fitView
+            fitViewOptions={{ padding: 0.16 }}
+            minZoom={0.25}
+            maxZoom={2.2}
+            defaultEdgeOptions={{
+              type: "straight",
+              selectable: false,
+              focusable: false,
+            }}
           >
-            <Background />
             <Controls />
           </ReactFlow>
         </div>
@@ -647,31 +807,7 @@ export function StoryWorkspace() {
         </div>
       </aside>
 
-      <section className={styles.activityPanel} aria-label="Activity and debug log">
-        <div className={styles.activityHeader}>
-          <h2>Activity Log</h2>
-          <button
-            className={styles.clearLogButton}
-            onClick={() => setActivityLogs([])}
-            disabled={activityLogs.length === 0}
-          >
-            Clear
-          </button>
-        </div>
-        <div className={styles.activityList}>
-          {activityLogs.length === 0 ? (
-            <p>No activity yet.</p>
-          ) : (
-            activityLogs.map((log) => (
-              <div key={log.id} className={`${styles.activityItem} ${logLevelClass(log.level)}`}>
-                <time>{log.timestamp}</time>
-                <span>{log.level}</span>
-                <p>{log.message}</p>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+      {renderActivityLog(activityLogs, () => setActivityLogs([]))}
         </div>
       )}
     </main>
@@ -679,16 +815,64 @@ export function StoryWorkspace() {
 
 }
 
-const futurePlaceholderPaths = [
-  "M 32 280 C 96 238, 132 166, 210 144 C 276 126, 322 86, 392 54",
-  "M 32 280 C 96 270, 138 248, 196 250 C 274 254, 320 226, 390 202",
-  "M 32 280 C 96 318, 128 382, 198 404 C 270 426, 320 482, 392 516",
-  "M 118 214 C 174 206, 216 184, 266 132",
-  "M 154 252 C 208 282, 256 306, 342 300",
-  "M 132 342 C 190 322, 230 350, 286 392",
-  "M 226 144 C 282 166, 316 176, 384 156",
-  "M 220 404 C 276 386, 326 394, 392 424",
+function renderActivityLog(activityLogs: ActivityLog[], clearActivityLogs: () => void) {
+  return (
+    <section className={styles.activityPanel} aria-label="Activity and debug log">
+      <div className={styles.activityHeader}>
+        <h2>Activity Log</h2>
+        <button
+          className={styles.clearLogButton}
+          onClick={clearActivityLogs}
+          disabled={activityLogs.length === 0}
+        >
+          Clear
+        </button>
+      </div>
+      <div className={styles.activityList}>
+        {activityLogs.length === 0 ? (
+          <p>No activity yet.</p>
+        ) : (
+          activityLogs.map((log) => (
+            <div key={log.id} className={`${styles.activityItem} ${logLevelClass(log.level)}`}>
+              <time>{log.timestamp}</time>
+              <span>{log.level}</span>
+              <p>{log.message}</p>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+const futureBranchLayouts = [
+  { path: "M 3 50 C 18 42, 26 25, 42 18 C 56 13, 66 12, 78 12", x: 78, y: 12 },
+  { path: "M 3 50 C 18 45, 33 36, 46 30 C 58 25, 69 22, 82 19", x: 82, y: 19 },
+  { path: "M 3 50 C 22 48, 34 45, 50 45 C 64 45, 73 42, 82 37", x: 82, y: 37 },
+  { path: "M 3 50 C 20 54, 34 56, 49 57 C 63 58, 72 55, 82 52", x: 82, y: 52 },
+  { path: "M 3 50 C 18 59, 29 70, 43 76 C 58 82, 70 78, 82 72", x: 82, y: 72 },
+  { path: "M 3 50 C 16 64, 25 82, 39 88 C 52 94, 66 91, 78 88", x: 78, y: 88 },
+  { path: "M 24 36 C 40 31, 49 19, 61 14", x: 61, y: 14 },
+  { path: "M 31 49 C 49 40, 57 35, 72 31", x: 72, y: 31 },
+  { path: "M 31 54 C 46 60, 58 65, 72 63", x: 72, y: 63 },
+  { path: "M 24 64 C 39 74, 51 83, 62 86", x: 62, y: 86 },
+  { path: "M 45 30 C 58 34, 65 41, 76 45", x: 76, y: 45 },
+  { path: "M 45 75 C 58 70, 67 76, 82 82", x: 82, y: 82 },
 ];
+
+function StoryDotNode({ data, selected }: NodeProps<Node<PreviewNodeData>>) {
+  return (
+    <div
+      className={`${styles.storyDotNode} ${selected ? styles.selectedDot : ""}`}
+      title={`${data.label}${data.detail ? `: ${data.detail}` : ""}`}
+      aria-label={`${data.kind}: ${data.label}`}
+    >
+      <Handle className={styles.dotHandle} type="target" position={Position.Top} />
+      <Handle className={styles.dotHandle} type="source" position={Position.Bottom} />
+      <span aria-hidden="true" />
+    </div>
+  );
+}
 
 function buildPlayTimeline(
   playGraph: PlayModeGraph | null,
@@ -758,6 +942,8 @@ function buildPlayTimeline(
       kind: moment.kind,
       x: 92 + (index / lastIndex) * 812,
       y: index % 2 === 0 ? 190 : 370,
+      role: "moment",
+      parentEpisodeId: null,
       layers: [],
     })),
   };
@@ -766,47 +952,92 @@ function buildPlayTimeline(
 function buildNeo4jTimeline(playGraph: PlayModeGraph): { nodes: PlayTimelineNode[] } {
   const orderedAnchors = playGraph.anchors
     .slice()
-    .sort((left, right) => {
-      const leftOrder = left.time ?? Number.MAX_SAFE_INTEGER + left.chronologyIndex;
-      const rightOrder = right.time ?? Number.MAX_SAFE_INTEGER + right.chronologyIndex;
+    .sort((left, right) => left.chronologyIndex - right.chronologyIndex);
+  const episodeGroups = new Map<
+    string,
+    {
+      id: string;
+      code: string | null;
+      title: string | null;
+      anchors: typeof orderedAnchors;
+    }
+  >();
 
-      return leftOrder - rightOrder;
-    })
-    .slice(0, 10);
-  const lastIndex = Math.max(orderedAnchors.length - 1, 1);
+  for (const anchor of orderedAnchors) {
+    const group = episodeGroups.get(anchor.episodeId);
 
-  return {
-    nodes: orderedAnchors.map((anchor, index) => {
-      const x = 92 + (index / lastIndex) * 812;
-      const y = 280;
+    if (group) {
+      group.anchors.push(anchor);
+    } else {
+      episodeGroups.set(anchor.episodeId, {
+        id: anchor.episodeId,
+        code: anchor.episodeCode,
+        title: anchor.episodeTitle,
+        anchors: [anchor],
+      });
+    }
+  }
 
-      return {
+  const nodes: PlayTimelineNode[] = [];
+
+  Array.from(episodeGroups.values()).forEach((episode, episodeIndex) => {
+    const episodeX = 140 + episodeIndex * 420;
+
+    nodes.push({
+      id: `episode-${episode.id}`,
+      label: truncateLabel(
+        [episode.code, episode.title].filter(Boolean).join(": ") || `Episode ${episodeIndex + 1}`
+      ),
+      detail: `${episode.anchors.length} moments`,
+      kind: "episode",
+      x: episodeX,
+      y: 280,
+      role: "episode",
+      parentEpisodeId: null,
+      layers: [],
+    });
+
+    episode.anchors.forEach((anchor, anchorIndex) => {
+      const lane = anchorIndex % 2 === 0 ? -1 : 1;
+      const row = Math.floor(anchorIndex / 2);
+      const x = episodeX + lane * 112;
+      const y = 420 + row * 92;
+
+      nodes.push({
         id: anchor.id,
         label: truncateLabel(anchor.label),
         detail: anchor.summary ?? "",
         kind: anchor.kind,
         x,
         y,
-        layers: positionPlayLayers(anchor.layers, x),
-      };
-    }),
-  };
+        role: "moment",
+        parentEpisodeId: `episode-${episode.id}`,
+        layers: positionPlayLayers(anchor.layers, x, y),
+      });
+    });
+  });
+
+  return { nodes };
 }
 
-function positionPlayLayers(layers: PlayLayerNode[], anchorX: number): PlayTimelineLayer[] {
-  const above = layers.filter((layer) => layer.side === "above").slice(0, 6);
-  const below = layers.filter((layer) => layer.side === "below").slice(0, 6);
+function positionPlayLayers(
+  layers: PlayLayerNode[],
+  anchorX: number,
+  anchorY = 280
+): PlayTimelineLayer[] {
+  const above = layers.filter((layer) => layer.side === "above").slice(0, 2);
+  const below = layers.filter((layer) => layer.side === "below").slice(0, 2);
 
   return [
     ...above.map((layer, index) => ({
       ...layer,
-      x: anchorX + [-86, 86, -38, 38, -118, 118][index],
-      y: [146, 146, 62, 62, -22, -22][index],
+      x: anchorX - 168,
+      y: anchorY + index * 58,
     })),
     ...below.map((layer, index) => ({
       ...layer,
-      x: anchorX + [-86, 86, -38, 38, -118, 118][index],
-      y: [410, 410, 494, 494, 578, 578][index],
+      x: anchorX + 168,
+      y: anchorY + index * 58,
     })),
   ];
 }
@@ -815,10 +1046,16 @@ function buildPlayFlow(timeline: { nodes: PlayTimelineNode[] }): {
   nodes: Node<PreviewNodeData>[];
   edges: Edge[];
 } {
+  const episodeNodes = timeline.nodes.filter((node) => node.role === "episode");
+  const firstAnchorX = episodeNodes[0]?.x ?? timeline.nodes[0]?.x ?? 120;
+  const lastAnchorX = episodeNodes.at(-1)?.x ?? timeline.nodes.at(-1)?.x ?? 900;
+  const axisStartX = Math.max(0, firstAnchorX - 120);
+  const axisEndX = lastAnchorX + 160;
+
   const flowNodes: Node<PreviewNodeData>[] = [
     {
       id: "time-axis-start",
-      position: { x: 28, y: 342 },
+      position: { x: axisStartX, y: 342 },
       data: { label: "earlier", kind: "time", detail: "" },
       className: styles.timeMarkerNode,
       selectable: false,
@@ -826,7 +1063,7 @@ function buildPlayFlow(timeline: { nodes: PlayTimelineNode[] }): {
     },
     {
       id: "time-axis-end",
-      position: { x: 960, y: 342 },
+      position: { x: axisEndX, y: 342 },
       data: { label: "now", kind: "time", detail: "" },
       className: styles.timeMarkerNode,
       selectable: false,
@@ -845,26 +1082,41 @@ function buildPlayFlow(timeline: { nodes: PlayTimelineNode[] }): {
     },
   ];
 
-  timeline.nodes.forEach((node, index) => {
+  episodeNodes.forEach((node, index) => {
+    if (index < episodeNodes.length - 1) {
+      edges.push({
+        id: `${node.id}-${episodeNodes[index + 1].id}`,
+        source: node.id,
+        target: episodeNodes[index + 1].id,
+        className: styles.playTimelineEdge,
+        selectable: false,
+      });
+    }
+  });
+
+  timeline.nodes.forEach((node) => {
     flowNodes.push({
       id: node.id,
-      position: { x: node.x - 82, y: 314 },
+      position: { x: node.x - 82, y: node.y + 34 },
       data: {
         label: node.label,
         kind: node.kind,
         detail: node.detail,
       },
-      className: styles.playAnchorNode,
+      className:
+        node.role === "episode"
+          ? `${styles.playAnchorNode} ${styles.playEpisodeNode}`
+          : styles.playAnchorNode,
       selectable: false,
       draggable: false,
     });
 
-    if (index < timeline.nodes.length - 1) {
+    if (node.parentEpisodeId) {
       edges.push({
-        id: `${node.id}-${timeline.nodes[index + 1].id}`,
-        source: node.id,
-        target: timeline.nodes[index + 1].id,
-        className: styles.playTimelineEdge,
+        id: `${node.parentEpisodeId}-${node.id}`,
+        source: node.parentEpisodeId,
+        target: node.id,
+        className: styles.playEpisodeStackEdge,
         selectable: false,
       });
     }
@@ -956,6 +1208,208 @@ function buildPreview(draft: TranscriptGraphDraft | null): {
   return { nodes, edges };
 }
 
+function buildConstellationGraph(
+  graph: DataGraph,
+  selectedNodeId: string | null
+): DataGraph {
+  const visibleNodes = graph.nodes.filter((node) => node.data.kind.toLowerCase() !== "episode");
+  const indexedNodes = new Map(visibleNodes.map((node) => [node.id, node]));
+  const adjacency = new Map<string, Set<string>>();
+
+  for (const node of visibleNodes) {
+    adjacency.set(node.id, new Set());
+  }
+
+  for (const edge of graph.edges) {
+    if (!indexedNodes.has(edge.source) || !indexedNodes.has(edge.target)) {
+      continue;
+    }
+
+    adjacency.get(edge.source)?.add(edge.target);
+    adjacency.get(edge.target)?.add(edge.source);
+  }
+
+  const components = getConnectedComponents(visibleNodes, adjacency);
+  const arrangedNodes = new Map<string, Node<PreviewNodeData>>();
+  const centers = getComponentCenters(components.length);
+
+  components.forEach((component, componentIndex) => {
+    const center = centers[componentIndex] ?? {
+      x: 220 + (componentIndex % 4) * 360,
+      y: 180 + Math.floor(componentIndex / 4) * 300,
+    };
+    const hub = component
+      .slice()
+      .sort((left, right) => {
+        const degreeDelta = (adjacency.get(right.id)?.size ?? 0) - (adjacency.get(left.id)?.size ?? 0);
+        return degreeDelta || stableHash(left.id) - stableHash(right.id);
+      })[0];
+    const orderedNodes = component
+      .slice()
+      .sort((left, right) => getNodeRadius(left, hub, adjacency) - getNodeRadius(right, hub, adjacency));
+
+    orderedNodes.forEach((node, index) => {
+      const radius = getNodeRadius(node, hub, adjacency);
+      const angle = getNodeAngle(node.id, index, orderedNodes.length, componentIndex);
+      const jitter = (stableHash(`${node.id}-jitter`) % 22) - 11;
+      const position =
+        node.id === hub.id
+          ? center
+          : {
+              x: center.x + Math.cos(angle) * radius + jitter,
+              y: center.y + Math.sin(angle) * radius + jitter * 0.45,
+            };
+
+      arrangedNodes.set(node.id, {
+        ...node,
+        type: "storyDot",
+        position,
+        draggable: false,
+        className: node.id === selectedNodeId ? styles.selectedDot : undefined,
+        style: {
+          "--node-color": getKindColor(node.data.kind),
+        } as CSSProperties,
+      });
+    });
+  });
+
+  return {
+    nodes: Array.from(arrangedNodes.values()),
+    edges: graph.edges
+      .filter((edge) => arrangedNodes.has(edge.source) && arrangedNodes.has(edge.target))
+      .map((edge) => ({
+        ...edge,
+        label: undefined,
+        type: "straight",
+        animated: false,
+        selectable: false,
+        focusable: false,
+        style: {
+          stroke: "rgba(159, 211, 229, 0.34)",
+          strokeWidth: 8,
+        },
+      })),
+  };
+}
+
+function getConnectedComponents(
+  nodes: Node<PreviewNodeData>[],
+  adjacency: Map<string, Set<string>>
+) {
+  const remaining = new Set(nodes.map((node) => node.id));
+  const components: Node<PreviewNodeData>[][] = [];
+
+  while (remaining.size > 0) {
+    const startId = remaining.values().next().value as string;
+    const queue = [startId];
+    const component: Node<PreviewNodeData>[] = [];
+    remaining.delete(startId);
+
+    while (queue.length > 0) {
+      const nodeId = queue.shift() as string;
+      const node = nodes.find((candidate) => candidate.id === nodeId);
+      if (node) {
+        component.push(node);
+      }
+
+      for (const neighborId of adjacency.get(nodeId) ?? []) {
+        if (remaining.has(neighborId)) {
+          remaining.delete(neighborId);
+          queue.push(neighborId);
+        }
+      }
+    }
+
+    components.push(component);
+  }
+
+  return components.sort((left, right) => right.length - left.length);
+}
+
+function getComponentCenters(count: number) {
+  const baseCenters = [
+    { x: 260, y: 210 },
+    { x: 650, y: 620 },
+    { x: -30, y: 560 },
+    { x: 960, y: 300 },
+    { x: 710, y: 30 },
+    { x: 160, y: 860 },
+    { x: 1070, y: 620 },
+    { x: 420, y: -90 },
+  ];
+
+  if (count <= baseCenters.length) {
+    return baseCenters;
+  }
+
+  return [
+    ...baseCenters,
+    ...Array.from({ length: count - baseCenters.length }, (_, index) => ({
+      x: 180 + (index % 5) * 260,
+      y: 1020 + Math.floor(index / 5) * 240,
+    })),
+  ];
+}
+
+function getNodeRadius(
+  node: Node<PreviewNodeData>,
+  hub: Node<PreviewNodeData>,
+  adjacency: Map<string, Set<string>>
+) {
+  if (node.id === hub.id) {
+    return 0;
+  }
+
+  const degree = adjacency.get(node.id)?.size ?? 0;
+  if (degree > 3) {
+    return 58 + (stableHash(node.id) % 24);
+  }
+
+  if (degree > 1) {
+    return 96 + (stableHash(node.id) % 42);
+  }
+
+  return 145 + (stableHash(node.id) % 74);
+}
+
+function getNodeAngle(nodeId: string, index: number, total: number, componentIndex: number) {
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  return index * goldenAngle + (stableHash(nodeId) % 100) / 100 + componentIndex * 0.72 + total * 0.03;
+}
+
+function getKindColor(kind: string) {
+  const colors: Record<string, string> = {
+    episode: "#ff8b95",
+    character: "#ff83ac",
+    person: "#ff9d8c",
+    place: "#00b894",
+    quest: "#00bcd4",
+    conflict: "#e260c1",
+    scene: "#bfefff",
+    event: "#55c7e8",
+    revelation: "#f1e77c",
+    faction: "#9fa087",
+    theme: "#a4a9ff",
+    item: "#10bfa4",
+    arc: "#f28cc7",
+    motivation: "#a8e3ff",
+    relationship: "#9c9b7b",
+    gamemechanic: "#00a8e0",
+  };
+
+  return colors[kind.toLowerCase()] ?? "#9fa087";
+}
+
+function stableHash(value: string) {
+  let hash = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+
+  return hash;
+}
+
 function statusClass(status: LoadStatus["status"]) {
   if (status === "loaded") {
     return styles.loadedStatus;
@@ -971,7 +1425,6 @@ function statusClass(status: LoadStatus["status"]) {
 function countPreviewObjects(draft: TranscriptGraphDraft) {
   return (
     2 +
-    draft.transcriptSpans.length +
     draft.people.length +
     draft.characters.length +
     draft.characterStates.length +

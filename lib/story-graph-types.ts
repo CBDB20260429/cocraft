@@ -6,7 +6,6 @@ const stringList = z.array(z.string()).default([]);
 
 const evidenceRefSchema = z.object({
   transcriptLineId: optionalString,
-  transcriptSpanId: optionalString,
   note: optionalString,
 });
 
@@ -16,10 +15,8 @@ const graphNodeBaseSchema = z.object({
 
 export const relationshipTypes = [
   "HAS_EPISODE",
-  "HAS_SPAN",
   "HAS_BEAT",
   "HAS_EVENT",
-  "EVIDENCED_BY",
   "PLAYS",
   "APPEARS_IN",
   "PARTICIPATES_IN",
@@ -78,16 +75,6 @@ export const transcriptGraphDraftSchema = z.object({
     summary: optionalString,
     arcHint: optionalString,
   }),
-  transcriptSpans: z.array(
-    graphNodeBaseSchema.extend({
-      spanType: z.string(),
-      startSeconds: optionalNumber,
-      endSeconds: optionalNumber,
-      title: z.string(),
-      summary: optionalString,
-      confidence: optionalNumber,
-    })
-  ),
   people: z.array(
     graphNodeBaseSchema.extend({
       name: z.string(),
@@ -287,7 +274,6 @@ export type TranscriptGraphLink = TranscriptGraphDraft["links"][number];
 export const graphLabels = [
   "TranscriptSource",
   "Episode",
-  "TranscriptSpan",
   "Person",
   "Character",
   "CharacterState",

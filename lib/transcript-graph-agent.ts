@@ -176,8 +176,6 @@ function normalizeRelationshipType(value: unknown) {
     MANIFESTS: "MANIFESTS_IN",
     REVEALED: "REVEALED_IN",
     REVEALS: "REVEALED_IN",
-    EVIDENCE: "EVIDENCED_BY",
-    SUPPORTED_BY: "EVIDENCED_BY",
     PLAYED_BY: "PLAYS",
     CAUSED_BY: "CAUSES",
     ENABLED_BY: "ENABLES",
@@ -202,7 +200,6 @@ function normalizeRelationshipType(value: unknown) {
     CARRIES_ITEM: "CARRIES",
     CREATED_ITEM: "CREATED",
     ASSOCIATED_WITH: "BETWEEN",
-    DOCUMENTS: "EVIDENCED_BY",
     ESCORTS: "PROTECTS",
     GUARDS: "PROTECTS",
     INTENDED_FOR: "SEEKS",
@@ -248,16 +245,16 @@ function buildPrompt(transcript: ParsedTranscript, transcriptText: string, trunc
     truncated
       ? "Note: the transcript text was truncated for this extraction pass. Include this limitation in extractionNotes."
       : "Note: the full parsed transcript text is included.",
-    `Allowed node labels for links: TranscriptSource, Episode, TranscriptSpan, Person, Character, CharacterState, Place, Faction, Item, Arc, Scene, Beat, Event, Quest, Conflict, Revelation, Motivation, Relationship, Theme, GameMechanic.`,
+    `Allowed node labels for links: TranscriptSource, Episode, Person, Character, CharacterState, Place, Faction, Item, Arc, Scene, Beat, Event, Quest, Conflict, Revelation, Motivation, Relationship, Theme, GameMechanic.`,
     `Allowed relationship types for links: ${relationshipTypes.join(", ")}.`,
     "Every link type must be one of the allowed relationship types exactly. Do not invent custom relationship names such as involves, occurs_at, target, documents, visits, runs, or associated_with.",
-    "Prefer these common patterns: Episode HAS_SPAN TranscriptSpan, Episode HAS_EVENT Event, Episode HAS_BEAT Beat, Character APPEARS_IN Scene, Character PARTICIPATES_IN Event, Character LOCATED_AT Place, Character MEMBER_OF Faction, Scene OCCURS_IN Place, Beat EVIDENCED_BY TranscriptSpan, Event EVIDENCED_BY TranscriptSpan, Quest INTRODUCED_IN Scene, Quest ADVANCES_QUEST Event, Conflict MANIFESTS_IN Scene, Revelation REVEALED_IN Scene, Motivation DRIVEN_BY Character, Relationship BETWEEN Character.",
+    "Prefer these common patterns: Episode HAS_EVENT Event, Episode HAS_BEAT Beat, Scene HAS_EVENT Event, Character APPEARS_IN Scene, Character PARTICIPATES_IN Event, Character LOCATED_AT Place, Character MEMBER_OF Faction, Scene OCCURS_IN Place, Quest INTRODUCED_IN Scene, Quest ADVANCES_QUEST Event, Conflict MANIFESTS_IN Scene, Revelation REVEALED_IN Scene, Motivation DRIVEN_BY Character, Relationship BETWEEN Character.",
+    "Do not create separate transcript evidence nodes. Put transcript evidence directly on scenes, events, beats, and links with startSeconds/endSeconds plus concise summaries.",
     "",
     "Return this JSON object shape exactly:",
     `{
   "transcriptSource": {"id": string, "url": string|null, "localPath": string, "sourceName": string|null, "checksum": string|null},
   "episode": {"id": string, "campaign": string|null, "episodeNumber": number|null, "code": string|null, "title": string, "airedAt": string|null, "summary": string|null, "arcHint": string|null},
-  "transcriptSpans": [{"id": string, "spanType": string, "startSeconds": number|null, "endSeconds": number|null, "title": string, "summary": string|null, "confidence": number|null}],
   "people": [{"id": string, "name": string, "role": string|null, "speakerLabels": string[]}],
   "characters": [{"id": string, "name": string, "aliases": string[], "characterType": string|null, "ancestry": string|null, "classRole": string|null, "level": number|null, "status": string|null, "summary": string|null, "dramaticFunction": string|null, "want": string|null, "need": string|null, "wound": string|null, "fearOrDoubt": string|null}],
   "characterStates": [{"id": string, "stateType": string|null, "label": string, "description": string|null, "startsAtSeconds": number|null, "endsAtSeconds": number|null, "severity": string|null, "certainty": string|null}],
@@ -277,7 +274,7 @@ function buildPrompt(transcript: ParsedTranscript, transcriptText: string, trunc
   "gameMechanics": [{"id": string, "mechanicType": string|null, "name": string, "description": string|null, "system": string|null, "result": string|null}],
   "links": [{"sourceLabel": string, "sourceId": string, "type": string, "targetLabel": string, "targetId": string, "summary": string|null, "episodeId": string|null, "startSeconds": number|null, "endSeconds": number|null, "status": string|null, "confidence": number|null, "evidenceCount": number|null}],
   "extractionNotes": string[],
-  "evidenceRefs": [{"transcriptLineId": string|null, "transcriptSpanId": string|null, "note": string|null}]
+  "evidenceRefs": [{"transcriptLineId": string|null, "note": string|null}]
 }`,
     "",
     "Transcript:",

@@ -37,11 +37,16 @@
 
 .playModePage {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
-  gap: 0;
+  grid-template-rows: minmax(0, 1fr) 168px;
   min-height: 0;
   background: #fffef9;
   color: var(--foreground);
+}
+
+.playPaneGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 0;
 }
 
 .pastPane,
@@ -84,15 +89,14 @@
 }
 
 .pastGraph,
-.futureSketch {
+.futureCards {
   position: relative;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
-.pastGraph :global(.react-flow),
-.futureSketch svg {
+.pastGraph :global(.react-flow) {
   display: block;
   width: 100%;
   height: 100%;
@@ -112,6 +116,13 @@
 
 .playLayerEdge :global(.react-flow__edge-path) {
   stroke: rgba(101, 95, 85, 0.32);
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
+.playEpisodeStackEdge :global(.react-flow__edge-path) {
+  stroke: rgba(36, 59, 83, 0.24);
+  stroke-dasharray: 5 7;
   stroke-linecap: round;
   stroke-width: 1.5;
 }
@@ -141,6 +152,12 @@
   line-height: 1.2;
   text-align: left;
   box-shadow: 0 10px 24px rgba(48, 40, 28, 0.11);
+}
+
+.playEpisodeNode {
+  border-color: #243b53 !important;
+  background: #eff4f8 !important;
+  text-align: center;
 }
 
 .playLayerNode {
@@ -180,26 +197,154 @@
   line-height: 1.35;
 }
 
-.futureSketch {
+.futureCards {
+  overflow: hidden;
+  padding: 0;
   background:
     linear-gradient(90deg, rgba(101, 95, 85, 0.12) 1px, transparent 1px),
     linear-gradient(0deg, rgba(101, 95, 85, 0.08) 1px, transparent 1px);
   background-size: 34px 34px;
 }
 
-.futureSketch path {
+.futureBranchMap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.futureBranchMap path {
   fill: none;
-  stroke: rgba(101, 95, 85, 0.48);
+  stroke: rgba(101, 95, 85, 0.42);
   stroke-linecap: round;
-  stroke-width: 4;
+  stroke-width: 0.78;
 }
 
-.futureSketch path:nth-child(2n) {
-  stroke-width: 2.5;
+.futureBranchMap path:nth-child(2n) {
+  stroke-width: 0.48;
 }
 
-.futureSketch path:nth-child(3n) {
-  stroke-dasharray: 9 12;
+.futureBranchMap path:nth-child(3n) {
+  stroke-dasharray: 1.8 2.3;
+}
+
+.futureNotice {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: min(360px, calc(100% - 28px));
+  border: 1px solid #d8ccba;
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 254, 249, 0.94);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.futureNotice p {
+  margin: 0;
+}
+
+.futureCard {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  gap: 5px;
+  width: clamp(118px, 21vw, 168px);
+  max-height: 154px;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  border: 1px solid #d8ccba;
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  padding: 7px;
+  background: rgba(255, 254, 249, 0.96);
+  color: var(--foreground);
+  text-align: left;
+  box-shadow: 0 8px 18px rgba(48, 40, 28, 0.08);
+}
+
+.futureCard:hover,
+.selectedFutureCard {
+  border-color: #9fb8b1;
+  box-shadow: 0 12px 24px rgba(48, 40, 28, 0.12);
+}
+
+.futureCard strong {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+.futureCard p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.futureCardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.futureCardMeta span {
+  border: 1px solid #dfd4c3;
+  border-radius: 999px;
+  padding: 2px 5px;
+  background: #f6f0e5;
+  color: #4d473d;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.futureCardDetail {
+  display: grid;
+  gap: 5px;
+  border-top: 1px solid #eee4d5;
+  padding-top: 5px;
+}
+
+.futureEvidenceList {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.futureEvidenceList span,
+.futureCardDetail span {
+  color: var(--foreground);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.danger {
+  border-left-color: var(--danger);
+}
+
+.opportunity {
+  border-left-color: #1f7a6d;
+}
+
+.mystery {
+  border-left-color: #5d6793;
+}
+
+.character {
+  border-left-color: #8a5a9d;
+}
+
+.quest {
+  border-left-color: #ad7d1d;
 }
 
 .transcriptPanel,
@@ -441,54 +586,65 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fbf8f0;
+  background: #f4f4f4;
   box-shadow: var(--shadow);
 }
 
-.storyNode {
-  width: 164px;
-  border: 2px solid var(--border);
-  padding: 8px;
-  background: white;
-  color: var(--foreground);
-  font-weight: 700;
-  box-shadow: 0 8px 20px rgba(48, 40, 28, 0.12);
+.graphCanvas :global(.react-flow__renderer) {
+  background: #f4f4f4;
 }
 
-.episode {
-  border-color: #243b53;
-  background: #eff4f8;
+.graphCanvas :global(.react-flow__node) {
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
-.character {
-  border-color: #8a5a9d;
+.graphCanvas :global(.react-flow__edge-path) {
+  stroke-linecap: round;
 }
 
-.place {
-  border-color: var(--accent);
+.storyDotNode {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border: 0;
+  background: transparent;
 }
 
-.quest {
-  border-color: #ad7d1d;
-  background: #fff7e6;
+.storyDotNode span {
+  position: absolute;
+  inset: 6px;
+  display: block;
+  border-radius: 999px;
+  background: var(--node-color, #9fa087);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.42);
 }
 
-.conflict {
-  border-color: var(--danger);
-  background: #fff3f3;
+.dotHandle {
+  width: 1px !important;
+  height: 1px !important;
+  min-width: 1px !important;
+  min-height: 1px !important;
+  border: 0 !important;
+  background: transparent !important;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.scene {
-  border-color: #5d6793;
+.selectedDot span {
+  inset: 4px;
+  box-shadow:
+    0 0 0 2px #f4f4f4,
+    0 0 0 5px rgba(23, 23, 23, 0.16);
 }
 
-.revelation {
-  border-color: #177b9f;
-  background: #eef9fc;
-}
-
-.selected {
-  outline: 3px solid rgba(31, 122, 109, 0.28);
+.graphCanvas :global(.react-flow__controls) {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 10px 28px rgba(23, 23, 23, 0.12);
 }
 
 .panelSection {
@@ -703,9 +859,13 @@
   }
 
   .playModePage {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(420px, 2fr) minmax(320px, 1fr);
+    grid-template-rows: minmax(840px, 1fr) 168px;
     overflow: auto;
+  }
+
+  .playPaneGrid {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(420px, 1fr) minmax(420px, 1fr);
   }
 
   .pastPane {

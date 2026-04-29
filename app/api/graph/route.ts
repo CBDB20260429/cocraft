@@ -30,7 +30,6 @@ const visibleLabels = [
   "Revelation",
   "Faction",
   "Theme",
-  "TranscriptSpan",
   "Person",
   "Item",
   "Arc",

@@ -65,29 +65,16 @@ Fields:
 Evidence: the first transcript starts with title `Arrival at Kraghammer` and
 metadata `Campaign 1 Episode 1`.
 
-### `(:TranscriptSpan)`
+### Transcript Evidence
 
-Represents a useful contiguous block of lines: intro, recap, scene, combat,
-interrogation, Q&A, break, etc.
-
-Fields:
-
-- `id`: Stable id.
-- `spanType`: `character_intro`, `recap`, `scene`, `combat`, `social`,
-  `announcement`, `break`, `qna`.
-- `startSeconds`, `endSeconds`: Numeric bounds.
-- `title`: Short label.
-- `summary`: Concise generated summary.
-- `confidence`: Extraction confidence.
-
-Why it exists: story events rarely fit a single line. For example, the Kraghammer
-tavern scene starts with asking guards for lodging and becomes social positioning,
-local color, Kima clues, Greyspine setup, and Grog's desire to fight.
+Transcript evidence is stored directly on the interpreted story objects rather
+than as separate graph nodes. Scenes, events, beats, and relationships carry
+`startSeconds`, `endSeconds`, summaries, confidence, and extraction notes where
+those details are useful.
 
 Relationships:
 
 - `(TranscriptSource)-[:HAS_EPISODE]->(Episode)`
-- `(Episode)-[:HAS_SPAN]->(TranscriptSpan)`
 
 ## People, Performers, and Fictional Agents
 
@@ -170,7 +157,6 @@ Relationships:
 
 - `(Person)-[:PLAYS]->(Character)`
 - `(Character)-[:HAS_STATE]->(CharacterState)`
-- `(CharacterState)-[:EVIDENCED_BY]->(TranscriptSpan)`
 
 ## World Layer
 
@@ -401,8 +387,7 @@ Relationships:
 - `(Scene)-[:HAS_EVENT]->(Event)`
 - `(Quest)-[:INTRODUCED_IN|UPDATED_IN|RESOLVED_IN]->(Scene|Event)`
 - `(Conflict)-[:MANIFESTS_IN]->(Scene|Event)`
-- `(Revelation)-[:REVEALED_IN]->(Scene|Beat|TranscriptSpan)`
-- `(Beat|Event|Scene|Quest|Conflict|Revelation)-[:EVIDENCED_BY]->(TranscriptSpan)`
+- `(Revelation)-[:REVEALED_IN]->(Scene|Beat)`
 
 ## Character Arc and Relationship Layer
 
@@ -461,7 +446,6 @@ Fields:
 Relationships:
 
 - `(Character)-[:DRIVEN_BY]->(Motivation)`
-- `(Motivation)-[:EVIDENCED_BY]->(TranscriptSpan)`
 - `(Character)-[:PARTICIPATES_IN]->(Relationship)`
 - `(Relationship)-[:BETWEEN]->(Character|Faction)` if using a relationship node
   pattern
@@ -497,14 +481,12 @@ Relationships:
 
 - `(GameMechanic)-[:OCCURS_IN]->(Beat|Event|Scene)`
 - `(GameMechanic)-[:AFFECTS]->(Character|CharacterState)`
-- `(GameMechanic)-[:EVIDENCED_BY]->(TranscriptSpan)`
 
 ## Recommended Relationship Types
 
 High-value relationship types for this project:
 
-- `HAS_EPISODE`, `HAS_SPAN`
-- `EVIDENCED_BY`
+- `HAS_EPISODE`
 - `PLAYS`
 - `APPEARS_IN`, `PARTICIPATES_IN`
 - `LOCATED_AT`, `TRAVELS_TO`
@@ -640,10 +622,6 @@ create constraint episode_id if not exists
 for (e:Episode)
 require e.id is unique;
 
-create constraint transcript_span_id if not exists
-for (s:TranscriptSpan)
-require s.id is unique;
-
 create constraint person_id if not exists
 for (p:Person)
 require p.id is unique;
@@ -715,19 +693,19 @@ Those nodes are useful for an early interactive prototype, but they are too flat
 for transcript analysis. This proposal treats the richer ontology as the primary
 database model. Any UI graph should render directly from concrete story objects
 such as `Character`, `Place`, `Quest`, `Conflict`, `Scene`, `Event`, and
-`Revelation`, with provenance available through `TranscriptSpan` and
-episode/source metadata.
+`Revelation`, with provenance available through timing and summary fields on
+typed nodes, relationships, and episode/source metadata.
 
 ## Extraction Order
 
 Recommended phased extraction:
 
 1. Parse all transcript files locally for prompt construction and metadata.
-2. Store `TranscriptSource`, `Episode`, and extracted `TranscriptSpan` nodes.
+2. Store `TranscriptSource` and `Episode` nodes.
 3. Extract canonical entities: people, characters, places, factions, items.
 4. Extract scenes, events, quests, conflicts, and revelations.
 5. Attach evidence and confidence to interpreted nodes and relationships at the
-   span/source level.
+   node, relationship, and source level.
 6. Render UI views directly from the typed graph nodes and relationships.
 
 ## Why This Shape Fits These Transcripts

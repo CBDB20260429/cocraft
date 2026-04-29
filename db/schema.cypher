@@ -4,9 +4,11 @@ where n:StorySession
    or n:NarrativeTurn
    or n:StateSnapshot
    or n:TranscriptLine
+   or n:TranscriptSpan
 detach delete n;
 
 drop constraint transcript_line_id if exists;
+drop constraint transcript_span_id if exists;
 
 drop index transcript_line_episode_time if exists;
 
@@ -19,10 +21,6 @@ require source.id is unique;
 create constraint episode_id if not exists
 for (episode:Episode)
 require episode.id is unique;
-
-create constraint transcript_span_id if not exists
-for (span:TranscriptSpan)
-require span.id is unique;
 
 create constraint person_id if not exists
 for (person:Person)

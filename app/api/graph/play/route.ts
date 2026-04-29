@@ -5,16 +5,12 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const transcriptId = url.searchParams.get("transcriptId");
 
-  if (!transcriptId) {
-    return NextResponse.json({ error: "Missing transcriptId." }, { status: 400 });
-  }
-
   try {
-    const graph = await getPlayModeGraph(transcriptId);
+    const graph = await getPlayModeGraph(transcriptId ?? undefined);
 
     if (!graph) {
       return NextResponse.json(
-        { error: "No loaded graph found for this transcript." },
+        { error: "No loaded story graph found." },
         { status: 404 }
       );
     }
