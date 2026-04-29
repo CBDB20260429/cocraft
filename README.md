@@ -1,60 +1,81 @@
-# Cocraft
+# README
+## Storytelling Harness for Co-Creation
 
-Cocraft is a browser-based storytelling graph pipeline for transcript ingestion,
-manual review, and Neo4j persistence. The stack is:
+---
 
-- Next.js + TypeScript on Node.js
-- React Flow for graph display and node selection
-- Neo4j for application and graph persistence
-- OpenAI API for transcript-to-graph extraction
+## Introduction: The Power of Storytelling
 
-## Setup
+Story is the art by which human action becomes intelligible. A life is made of many moments, but a story gathers them into purpose: cause answering cause, choice revealing character, sorrow and wonder finding their proper measure. Through story, we do not merely receive events; we recognize what they mean.
 
-Install dependencies:
+The strongest tale is not imposed upon the listener like a decree. It invites participation. It gives the mind a path to follow, the heart a motion to feel, and the will a place to act. In this way, storytelling becomes a shared inquiry into what may happen, what ought to happen, and who we become by choosing.
 
-```sh
-npm install
-```
+This product exists to serve that ancient power in a living form: to help people shape narratives in real time, with memory enough for coherence, freedom enough for surprise, and craft enough that each turn may feel both possible and necessary.
 
-Create local environment variables:
+---
 
-```sh
-cp .env.example .env
-```
+## Using Codex
 
-Required values:
+In 5 hours we made fantastic progress, and created an end-to-end app as envisaged.
+We used the following Codex capabilities:
+- converting audio ideation session to transcript
+- converting transcript to PRD
+- refining the PRD in a live session
+- multiple cycles of code generation and debugging
+- generated 12 documents
+- created an infographic
 
-- `NEO4J_URI`
-- `NEO4J_USERNAME`
-- `NEO4J_PASSWORD`
-- `OPENAI_API_KEY`
+---
 
-Optional values:
+## 1. Product Overview
 
-- `OPENAI_MODEL`, defaults to `gpt-5.5`
-- `NEO4J_DATABASE`, defaults to `neo4j`
+### 1.1 Vision
+Create a storytelling system that enables dynamic, participatory narratives powered by an LLM, allowing users to co-create stories in real time.
 
-Apply the Neo4j schema constraints:
+### 1.2 Mission
+Deliver a storytelling harness that generates meaningful, engaging, and emotionally resonant stories tailored to audience intent, while avoiding artificiality and disengagement.
 
-```sh
-npm run db:migrate
-```
+### 1.3 Core Value Proposition
+- Transform storytelling from passive consumption to active participation
+- Enable emergent narratives shaped by user interaction
+- Provide a flexible system supporting multiple storytelling modes
 
-Run the app:
+---
 
-```sh
-npm run dev
-```
+## 2. Objectives & Success Metrics
 
-Then open http://localhost:3000.
+### 2.1 Objectives
+- Build a functional storytelling harness for co-creation
+- Demonstrate emergent storytelling through interactive sessions
+- Develop a scalable architecture supporting multiple storytelling modes
+- Deliver a simple, publicly accessible prototype
 
-## Transcript Pipeline
+### 2.2 Success Metrics
+- User engagement (session duration, repeat usage)
+- Narrative coherence across sessions
+- User satisfaction (qualitative feedback)
+- Reduction in “uncanny valley” perception
+- System adaptability across multiple sessions
 
-The home page lists Markdown files from `transcripts/` and shows whether each
-episode has been loaded into the graph. The workflow is intentionally paused at
-the review step:
+---
 
-1. Select a transcript.
-2. Click `Load Draft` to send the transcript through the OpenAI extraction pass.
-3. Review or edit the generated graph JSON.
-4. Click `Insert Approved` to write the typed graph data into Neo4j.
+## 3. Target Users
+
+### 3.1 Primary Users
+- Creators and storytellers
+- Role-playing enthusiasts
+- Experimenters exploring AI-driven narratives
+
+### 3.2 Secondary Users
+- Educators and facilitators
+- Game designers
+- General users interested in interactive storytelling
+
+---
+
+## 4. User Needs
+
+- Ability to co-create stories dynamically
+- Control over narrative direction and choices
+- Emotional engagement and immersion
+- Coherent story progression across sessions
+- Low friction interaction with the system

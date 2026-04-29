@@ -4,16 +4,6 @@
 
 ---
 
-## Introduction: The Power of Storytelling
-
-Story is the art by which human action becomes intelligible. A life is made of many moments, but a story gathers them into purpose: cause answering cause, choice revealing character, sorrow and wonder finding their proper measure. Through story, we do not merely receive events; we recognize what they mean.
-
-The strongest tale is not imposed upon the listener like a decree. It invites participation. It gives the mind a path to follow, the heart a motion to feel, and the will a place to act. In this way, storytelling becomes a shared inquiry into what may happen, what ought to happen, and who we become by choosing.
-
-This product exists to serve that ancient power in a living form: to help people shape narratives in real time, with memory enough for coherence, freedom enough for surprise, and craft enough that each turn may feel both possible and necessary.
-
----
-
 ## 1. Product Overview
 
 ### 1.1 Vision
